@@ -1,4 +1,5 @@
-#include "ast/ast_printer.hpp"
+#include "SemanticAnalysis/SemanticAnalyser.hpp"
+#include "ast/ASTPrinter.hpp"
 #include "lexer/tokenizer.hpp"
 #include "parser/parser.hpp"
 
@@ -24,6 +25,9 @@ int main(int argc, char* argv[]) {
 
     Parser parser(tokens);
     auto program = parser.parse();
+
+    SemanticAnalyser analyser;
+    analyser.analyse(program);
 
     ASTPrinter::print(program);
     return 0;

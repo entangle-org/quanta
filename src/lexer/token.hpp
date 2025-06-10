@@ -1,6 +1,6 @@
 #pragma once
 
-#include "token_type.hpp"
+#include "TokenType.hpp"
 #include <string>
 
 struct Token {
