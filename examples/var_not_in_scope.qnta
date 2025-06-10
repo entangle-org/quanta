@@ -1,0 +1,3 @@
+quantum function foo(qubit q) -> void {
+    h(x);
+}
