@@ -1,0 +1,15 @@
+# CMake
+build/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+.clang-format
+
+# VSCode
+.vscode/
+*.code-workspace
+
+# Binaries
+quanta
+*.exe

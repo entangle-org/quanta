@@ -1,0 +1,14 @@
+int x = 5;
+float pi = 3.14f;
+char c = 'a';
+string s = "quantum";
+
+qubit @(0) q0;
+
+int bit;
+
+bit = measure hadamard(q0);
+
+quantum function hadamard(qubit q) -> void {
+    h(q);
+}
