@@ -36,5 +36,4 @@ private:
     Token scanIdentifierOrKeyword();
     Token scanString();
     Token scanChar();
-    Token scanQubitLiteral();
 };

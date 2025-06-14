@@ -8,7 +8,6 @@ enum class TokenType {
     FloatLiteral,
     StringLiteral,
     CharLiteral,
-    QubitLiteral,
 
     // Keywords
     Int,
@@ -16,9 +15,8 @@ enum class TokenType {
     String,
     Char,
     Qubit,
+    Bit,
     Void,
-    Quantum,
-    Classical,
     Function,
     Import,
     Return,
@@ -26,6 +24,8 @@ enum class TokenType {
     For,
     Class,
     Measure,
+    Final,
+    Reset,
 
     // Symbols and operators
     Equals,

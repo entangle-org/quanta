@@ -22,12 +22,17 @@ private:
     bool match(TokenType type);
     bool check(TokenType type) const;
     bool isPrimitive(TokenType type) const;
+
     const Token& consumeOrError(TokenType type, const std::string& message);
+    const void error(const std::string& message, const int& line, const int& column);
 
     std::shared_ptr<Statement> parseStatement();
     std::shared_ptr<Statement> parseFunctionDecl();
     std::shared_ptr<Statement> parseVariableDecl();
     std::shared_ptr<Statement> parseExpressionStmt();
+    std::shared_ptr<Statement> parseResetStmt();
+    std::shared_ptr<Statement> parseAdjointStmt();
+    std::shared_ptr<Statement> parseReturnStmt();
 
     std::shared_ptr<Expression> parseExpression();
     std::shared_ptr<Expression> parsePrimary();

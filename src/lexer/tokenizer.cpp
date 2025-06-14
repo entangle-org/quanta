@@ -104,7 +104,7 @@ Token Tokenizer::scanToken() {
     case ':':
         return makeToken(TokenType::Colon, ":");
     case '@':
-        return scanQubitLiteral();
+        return makeToken(TokenType::At, "@");
     case '"':
         return scanString();
     case '\'':
@@ -154,11 +154,26 @@ Token Tokenizer::scanIdentifierOrKeyword() {
     std::string text = source.substr(start, position - start);
 
     static const std::unordered_map<std::string, TokenType> keywords = {
-        {"int", TokenType::Int},         {"float", TokenType::Float},         {"string", TokenType::String},
-        {"char", TokenType::Char},       {"qubit", TokenType::Qubit},         {"void", TokenType::Void},
-        {"quantum", TokenType::Quantum}, {"classical", TokenType::Classical}, {"function", TokenType::Function},
-        {"import", TokenType::Import},   {"return", TokenType::Return},       {"if", TokenType::If},
-        {"for", TokenType::For},         {"class", TokenType::Class},         {"measure", TokenType::Measure}};
+
+        // Primitives
+        {"int", TokenType::Int},
+        {"float", TokenType::Float},
+        {"string", TokenType::String},
+        {"char", TokenType::Char},
+        {"qubit", TokenType::Qubit},
+        {"bit", TokenType::Bit},
+
+        // Keywords
+        {"void", TokenType::Void},
+        {"function", TokenType::Function},
+        {"import", TokenType::Import},
+        {"return", TokenType::Return},
+        {"if", TokenType::If},
+        {"for", TokenType::For},
+        {"class", TokenType::Class},
+        {"measure", TokenType::Measure},
+        {"final", TokenType::Final},
+        {"reset", TokenType::Reset}};
 
     auto it = keywords.find(text);
     if (it != keywords.end()) {
@@ -197,24 +212,4 @@ Token Tokenizer::scanChar() {
 
     reportError("Unterminated char literal");
     return makeToken(TokenType::Unknown, source.substr(start - 1, position - start + 1));
-}
-
-Token Tokenizer::scanQubitLiteral() {
-    if (!match('(')) {
-        return makeToken(TokenType::At, "@");
-    }
-
-    size_t start = position;
-
-    // Acceptable characters: + - i 0 1
-    while (position < source.length() && (isalnum(peek()) || peek() == '+' || peek() == '-')) {
-        advance();
-    }
-
-    if (!match(')')) {
-        reportError("Unterminated qubit initializer @(...)");
-        return makeToken(TokenType::Unknown, source.substr(start - 2, position - start + 2));
-    }
-
-    return makeToken(TokenType::QubitLiteral, source.substr(start - 2, position - start + 3));
 }

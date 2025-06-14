@@ -11,7 +11,7 @@ struct Program {
     std::vector<std::shared_ptr<Statement>> statements;
 };
 
-enum class StatementType { VariableDecl, FunctionDecl, ExpressionStmt, ReturnStmt };
+enum class StatementType { VariableDecl, FunctionDecl, ExpressionStmt, ReturnStmt, ResetStmt, AdjointStmt };
 
 struct Statement {
     StatementType type;
@@ -22,6 +22,9 @@ struct VariableDecl : public Statement {
     std::string primitive;
     std::string name;
     std::shared_ptr<Expression> initialiser;
+    bool isFinal = false;
+    bool isArray = false;
+    int arraySize = 0;
 
     VariableDecl(const std::string& primitive, const std::string& name, std::shared_ptr<Expression> init)
         : primitive(primitive)
@@ -37,7 +40,8 @@ struct Parameter {
 };
 
 struct FunctionDecl : public Statement {
-    bool isQuantum;
+    bool isQuantum = false;
+    bool isAdjoint = false;
     std::string name;
     std::vector<Parameter> params;
     std::string returnType;
@@ -49,6 +53,32 @@ struct FunctionDecl : public Statement {
         , params(std::move(params))
         , returnType(returnType) {
         type = StatementType::FunctionDecl;
+    }
+};
+
+struct ResetStmt : public Statement {
+    std::shared_ptr<Expression> target;
+    ResetStmt(std::shared_ptr<Expression> t)
+        : target(std::move(t)) {
+        type = StatementType::ResetStmt;
+    }
+};
+
+struct AdjointStmt : public Statement {
+    std::string callee;
+    std::vector<std::shared_ptr<Expression>> args;
+    AdjointStmt(std::string c, std::vector<std::shared_ptr<Expression>> a)
+        : callee(std::move(c))
+        , args(std::move(a)) {
+        type = StatementType::AdjointStmt;
+    }
+};
+
+struct ReturnStmt : public Statement {
+    std::shared_ptr<Expression> value;
+    explicit ReturnStmt(std::shared_ptr<Expression> val)
+        : value(std::move(val)) {
+        type = StatementType::ReturnStmt;
     }
 };
 
