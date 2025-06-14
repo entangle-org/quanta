@@ -1,0 +1,14 @@
+@quantum
+function bell_pair(qubit q0, qubit q1) -> void {
+  h(q0);
+  cx(q0, q1);
+}
+
+qubit q0;
+qubit q1;
+
+bell_pair(q0, q1);
+bit b0 = measure q0;
+bit b1 = measure q1;
+
+echo("Bell state measurement: ", b0, b1);
