@@ -148,3 +148,12 @@ struct AssignmentExpr : public Expression {
         type = ExpressionType::Assignment;
     }
 };
+
+struct Annotation {
+    std::string name;
+    std::string argument;
+
+    Annotation(const std::string& name, const std::string& arg = "")
+        : name(name)
+        , argument(arg) {}
+};

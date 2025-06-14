@@ -27,12 +27,15 @@ private:
     const void error(const std::string& message, const int& line, const int& column);
 
     std::shared_ptr<Statement> parseStatement();
-    std::shared_ptr<Statement> parseFunctionDecl();
-    std::shared_ptr<Statement> parseVariableDecl();
+    std::shared_ptr<Statement> parseFunctionDecl(const std::vector<Annotation>& annotations);
+    std::shared_ptr<Statement> parseVariableDecl(const std::vector<Annotation>& annotations);
     std::shared_ptr<Statement> parseExpressionStmt();
     std::shared_ptr<Statement> parseResetStmt();
     std::shared_ptr<Statement> parseAdjointStmt();
     std::shared_ptr<Statement> parseReturnStmt();
+
+    std::vector<Annotation> parseAnnotations();
+    Annotation parseSingleAnnotation();
 
     std::shared_ptr<Expression> parseExpression();
     std::shared_ptr<Expression> parsePrimary();

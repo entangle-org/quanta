@@ -59,52 +59,43 @@ std::shared_ptr<Statement> Parser::parseStatement() {
         return parseReturnStmt();
     if (match(TokenType::Reset))
         return parseResetStmt();
+
+    std::vector<Annotation> annotations;
     if (check(TokenType::At)) {
-
-        if (tokens.size() <= current + 1) {
-            error("Unexpected end after '@'", peek().line, peek().column);
-        }
-
-        Token next = tokens[current + 1];
-        const std::string& annotation = next.value;
-
-        if (annotation == "adjoint") {
-            return parseAdjointStmt();
-        } else if (annotation == "quantum") {
-            return parseFunctionDecl();
-        } else if (annotation == "state") {
-            return parseVariableDecl();
-        } else {
-            error("Unknown annotation @" + annotation, next.line, next.column);
-        }
+        annotations = parseAnnotations();
     }
-    if (check(TokenType::Function))
-        return parseFunctionDecl();
-    if (check(TokenType::Final) || isPrimitive(peek().type))
-        return parseVariableDecl();
+
+    if (check(TokenType::Function)) {
+        return parseFunctionDecl(annotations);
+    }
+
+    if (check(TokenType::Final) || isPrimitive(peek().type)) {
+        return parseVariableDecl(annotations);
+    }
+
+    if (!annotations.empty()) {
+        error("Unexpected annotations on non-declarative statement", peek().line, peek().column);
+    }
 
     return parseExpressionStmt();
 }
 
-std::shared_ptr<Statement> Parser::parseFunctionDecl() {
+std::shared_ptr<Statement> Parser::parseFunctionDecl(const std::vector<Annotation>& annotations) {
     bool isQuantum = false;
     bool isAdjoint = false;
 
-    while (match(TokenType::At)) {
-        Token annotation = consumeOrError(TokenType::Identifier, "Expected annotation name");
-
-        if (annotation.value == "quantum") {
+    for (const auto& annotation : annotations) {
+        if (annotation.name == "quantum") {
             isQuantum = true;
-        } else if (annotation.value == "adjoint") {
+        } else if (annotation.name == "adjoint") {
             isAdjoint = true;
         } else {
-            error("Unknown annotation @" + annotation.value, annotation.line, annotation.column);
+            error("Unknown annotation @" + annotation.name, peek().line, peek().column);
         }
     }
 
     if (isAdjoint && !isQuantum) {
-        std::cerr << "[Parser Error] @adjoint annotation is only allowed on @quantum functions\n";
-        std::exit(1);
+        error("@adjoint annotation is only allowed on @quantum functions", peek().line, peek().column);
     }
 
     consumeOrError(TokenType::Function, "Expected 'function'");
@@ -139,22 +130,22 @@ std::shared_ptr<Statement> Parser::parseFunctionDecl() {
     return func;
 }
 
-std::shared_ptr<Statement> Parser::parseVariableDecl() {
+std::shared_ptr<Statement> Parser::parseVariableDecl(const std::vector<Annotation>& annotations) {
     std::shared_ptr<Expression> initialiser = nullptr;
     bool isFinal = false;
     bool isArray = false;
     int arraySize = 0;
 
-    if (match(TokenType::At)) {
-        Token annotation = consumeOrError(TokenType::Identifier, "Expected annotation name after '@'");
-        if (annotation.value == "state") {
-            consumeOrError(TokenType::LParen, "Expected '(' after @state");
-            Token stateToken = consumeOrError(TokenType::CharLiteral,
-                                              "[Parser Error] Use single quotes in @state (e.g. @state('+'), not @state(\"+\"))\n");
-            consumeOrError(TokenType::RParen, "Expected ')' after @state string");
-            initialiser = std::make_shared<LiteralExpr>(stateToken.value);
-        } else {
-            error("Unknown annotation @" + annotation.value, annotation.line, annotation.column);
+    if (!annotations.empty()) {
+        for (const auto& annotation : annotations) {
+            if (annotation.name == "state") {
+                if (annotation.argument.empty()) {
+                    error("@state must have a char literal argument", peek().line, peek().column);
+                }
+                initialiser = std::make_shared<LiteralExpr>(annotation.argument);
+            } else {
+                error("Unknown annotation @" + annotation.name, peek().line, peek().column);
+            }
         }
     }
 
@@ -272,4 +263,31 @@ std::shared_ptr<Expression> Parser::parseCall(std::shared_ptr<Expression> callee
     }
     consumeOrError(TokenType::RParen, "Expected ')'");
     return std::make_shared<CallExpr>(dynamic_cast<IdentifierExpr&>(*callee).name, args);
+}
+
+std::vector<Annotation> Parser::parseAnnotations() {
+    std::vector<Annotation> annotations;
+    while (match(TokenType::At)) {
+        annotations.push_back(parseSingleAnnotation());
+    }
+    return annotations;
+}
+
+Annotation Parser::parseSingleAnnotation() {
+    Token ident = consumeOrError(TokenType::Identifier, "Expected annotation name after '@'");
+
+    std::string name = ident.value;
+    std::string argument;
+
+    if (match(TokenType::LParen)) {
+        if (check(TokenType::CharLiteral)) {
+            Token arg = advance();
+            argument = arg.value;
+        } else {
+            error("Only char literals allowed as annotation arguments", peek().line, peek().column);
+        }
+        consumeOrError(TokenType::RParen, "Expected ')' after annotation argument");
+    }
+
+    return Annotation(name, argument);
 }
