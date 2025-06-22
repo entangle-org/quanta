@@ -10,38 +10,69 @@
 class Parser {
 public:
   explicit Parser(const std::vector<Token> &tokens);
-  std::shared_ptr<Program> parse();
+  std::unique_ptr<Program> parse();
 
 private:
   const std::vector<Token> &tokens;
   size_t current;
 
+  // Token manipulation
   const Token &peek() const;
-  const Token &advance();
   const Token &previous() const;
+  const Token &advance();
+  const Token &expect(TokenType type, const std::string &message);
+
+  // Token matching
   bool match(TokenType type);
   bool check(TokenType type) const;
-  bool isPrimitive(TokenType type) const;
+  bool checkNext(TokenType type) const;
+  bool checkFunctionAnnotation() const;
+  bool isAtEnd() const;
 
-  const Token &consumeOrError(TokenType type, const std::string &message);
-  const void error(const std::string &message, const int &line,
-                   const int &column);
+  void reportError(const std::string &message);
 
-  std::shared_ptr<Statement> parseStatement();
-  std::shared_ptr<Statement>
-  parseFunctionDecl(const std::vector<Annotation> &annotations);
-  std::shared_ptr<Statement>
-  parseVariableDecl(const std::vector<Annotation> &annotations);
-  std::shared_ptr<Statement> parseExpressionStmt();
-  std::shared_ptr<Statement> parseResetStmt();
-  std::shared_ptr<Statement> parseAdjointStmt();
-  std::shared_ptr<Statement> parseReturnStmt();
+  // Top level
+  std::unique_ptr<ImportStatement> parseImport();
+  std::unique_ptr<FunctionDeclaration> parseFunction();
+  std::unique_ptr<ClassDeclaration> parseClass();
+  std::unique_ptr<Statement> parseTopLevelStatement();
 
-  std::vector<Annotation> parseAnnotations();
-  Annotation parseSingleAnnotation();
+  // Declarations
+  std::unique_ptr<VariableDeclaration> parseVariableDeclaration(bool isFinal);
+  std::unique_ptr<AnnotationNode> parseAnnotation();
+  std::vector<std::unique_ptr<AnnotationNode>> parseAnnotations();
 
-  std::shared_ptr<Expression> parseExpression();
-  std::shared_ptr<Expression> parsePrimary();
-  std::shared_ptr<Expression> parseCall(std::shared_ptr<Expression> callee);
-  std::shared_ptr<Expression> parseMeasure();
+  // Statements
+  std::unique_ptr<Statement> parseStatement();
+  std::unique_ptr<BlockStatement> parseBlock();
+  std::unique_ptr<ReturnStatement> parseReturn();
+  std::unique_ptr<IfStatement> parseIf();
+  std::unique_ptr<ForStatement> parseFor();
+  std::unique_ptr<EchoStatement> parseEcho();
+  std::unique_ptr<ResetStatement> parseReset();
+  std::unique_ptr<MeasureStatement> parseMeasure();
+  std::unique_ptr<AssignmentStatement> parseAssignment();
+  std::unique_ptr<ExpressionStatement> parseExpressionStatement();
+
+  // Expressions
+  std::unique_ptr<Expression> parseExpression();
+  std::unique_ptr<Expression> parseAssignmentExpression();
+  std::unique_ptr<Expression> parseComparison();
+  std::unique_ptr<Expression> parseAdditive();
+  std::unique_ptr<Expression> parseMultiplicative();
+  std::unique_ptr<Expression> parseUnary();
+  std::unique_ptr<Expression> parseCall();
+  std::unique_ptr<Expression> parsePrimary();
+
+  // Literals
+  std::unique_ptr<Expression> parseLiteral();
+
+  // Types
+  std::unique_ptr<Type> parseType();
+  std::unique_ptr<Type> parsePrimitiveType();
+  std::unique_ptr<Type> parseArrayType(std::unique_ptr<Type> elementType);
+
+  // Parameters and Arguments
+  std::vector<std::unique_ptr<Parameter>> parseParameterList();
+  std::vector<std::unique_ptr<Expression>> parseArgumentList();
 };

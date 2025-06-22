@@ -4,156 +4,252 @@
 #include <string>
 #include <vector>
 
-struct Statement;
-struct Expression;
-
-struct Program {
-    std::vector<std::shared_ptr<Statement>> statements;
+// Base Node Interfaces
+struct ASTNode {
+  virtual ~ASTNode() = default;
 };
 
-enum class StatementType { VariableDecl, FunctionDecl, ExpressionStmt, ReturnStmt, ResetStmt, AdjointStmt };
+struct Statement : public ASTNode {};
+struct Expression : public ASTNode {};
+struct Type : public ASTNode {};
 
-struct Statement {
-    StatementType type;
-    virtual ~Statement() = default;
+// Pre-declared Nodes
+struct BlockStatement;
+struct AnnotationNode;
+struct Parameter;
+
+// Import Statement
+struct ImportStatement : public Statement {
+  std::string module;
+
+  ImportStatement() = default;
 };
 
-struct VariableDecl : public Statement {
-    std::string primitive;
-    std::string name;
-    std::shared_ptr<Expression> initialiser;
-    bool isFinal = false;
-    bool isArray = false;
-    int arraySize = 0;
+// Variable Declaration
+struct VariableDeclaration : public Statement {
+  std::string name;
+  std::unique_ptr<Type> varType;
+  std::unique_ptr<Expression> initializer;
+  std::vector<std::unique_ptr<AnnotationNode>> annotations;
+  bool isFinal;
 
-    VariableDecl(const std::string& primitive, const std::string& name, std::shared_ptr<Expression> init)
-        : primitive(primitive)
-        , name(name)
-        , initialiser(std::move(init)) {
-        type = StatementType::VariableDecl;
-    }
+  VariableDeclaration() = default;
 };
 
-struct Parameter {
-    std::string primitive;
-    std::string name;
+// Block Statement
+struct BlockStatement : public Statement {
+  std::vector<std::unique_ptr<Statement>> statements;
+
+  BlockStatement() = default;
 };
 
-struct FunctionDecl : public Statement {
-    bool isQuantum = false;
-    bool isAdjoint = false;
-    std::string name;
-    std::vector<Parameter> params;
-    std::string returnType;
-    std::vector<std::shared_ptr<Statement>> body;
+// Expression Statement
+struct ExpressionStatement : public Statement {
+  std::unique_ptr<Expression> expression;
 
-    FunctionDecl(bool isQuantum, const std::string& name, std::vector<Parameter> params, const std::string& returnType)
-        : isQuantum(isQuantum)
-        , name(name)
-        , params(std::move(params))
-        , returnType(returnType) {
-        type = StatementType::FunctionDecl;
-    }
+  ExpressionStatement() = default;
 };
 
-struct ResetStmt : public Statement {
-    std::shared_ptr<Expression> target;
-    ResetStmt(std::shared_ptr<Expression> t)
-        : target(std::move(t)) {
-        type = StatementType::ResetStmt;
-    }
+// Return Statement
+struct ReturnStatement : public Statement {
+  std::unique_ptr<Expression> value;
+
+  ReturnStatement() = default;
 };
 
-struct AdjointStmt : public Statement {
-    std::string callee;
-    std::vector<std::shared_ptr<Expression>> args;
-    AdjointStmt(std::string c, std::vector<std::shared_ptr<Expression>> a)
-        : callee(std::move(c))
-        , args(std::move(a)) {
-        type = StatementType::AdjointStmt;
-    }
+// If Statement
+struct IfStatement : public Statement {
+  std::unique_ptr<Expression> condition;
+  std::unique_ptr<Statement> thenBranch;
+  std::unique_ptr<Statement> elseBranch;
+
+  IfStatement() = default;
 };
 
-struct ReturnStmt : public Statement {
-    std::shared_ptr<Expression> value;
-    explicit ReturnStmt(std::shared_ptr<Expression> val)
-        : value(std::move(val)) {
-        type = StatementType::ReturnStmt;
-    }
+// For Statement
+struct ForStatement : public Statement {
+  std::unique_ptr<Statement> initializer;
+  std::unique_ptr<Expression> condition;
+  std::unique_ptr<Expression> increment;
+  std::unique_ptr<Statement> body;
+
+  ForStatement() = default;
 };
 
-enum class ExpressionType { Literal, Identifier, Binary, Call, Assignment };
+// Echo Statement
+struct EchoStatement : public Statement {
+  std::unique_ptr<Expression> value;
 
-struct Expression {
-    ExpressionType type;
-    virtual ~Expression() = default;
+  EchoStatement() = default;
 };
 
-struct ExpressionStmt : public Statement {
-    std::shared_ptr<Expression> expression;
+// Reset Statement
+struct ResetStatement : public Statement {
+  std::unique_ptr<Expression> target;
 
-    explicit ExpressionStmt(std::shared_ptr<Expression> expression)
-        : expression(std::move(expression)) {}
+  ResetStatement() = default;
 };
 
-struct LiteralExpr : public Expression {
-    std::string value;
+// Measure Statement
+struct MeasureStatement : public Statement {
+  std::unique_ptr<Expression> qubit;
 
-    explicit LiteralExpr(std::string value)
-        : value(std::move(value)) {
-        type = ExpressionType::Literal;
-    }
+  MeasureStatement() = default;
 };
 
-struct IdentifierExpr : public Expression {
-    std::string name;
+// Assignment
+struct AssignmentStatement : public Statement {
+  std::string name;
+  std::unique_ptr<Expression> value;
 
-    explicit IdentifierExpr(std::string name)
-        : name(std::move(name)) {
-        type = ExpressionType::Identifier;
-    }
+  AssignmentStatement() = default;
 };
 
-struct BinaryExpr : public Expression {
-    std::shared_ptr<Expression> left;
-    std::string op;
-    std::shared_ptr<Expression> right;
+// Binary Expression
+struct BinaryExpression : public Expression {
+  std::string op;
+  std::unique_ptr<Expression> left;
+  std::unique_ptr<Expression> right;
 
-    BinaryExpr(std::shared_ptr<Expression> left, std::string op, std::shared_ptr<Expression> right)
-        : left(std::move(left))
-        , op(std::move(op))
-        , right(std::move(right)) {
-        type = ExpressionType::Binary;
-    }
+  BinaryExpression(const std::string &op, std::unique_ptr<Expression> left,
+                   std::unique_ptr<Expression> right)
+      : op(op), left(std::move(left)), right(std::move(right)) {}
 };
 
-struct CallExpr : public Expression {
-    std::string callee;
-    std::vector<std::shared_ptr<Expression>> arguments;
+// Unary Expression
+struct UnaryExpression : public Expression {
+  std::string op;
+  std::unique_ptr<Expression> right;
 
-    CallExpr(std::string callee, std::vector<std::shared_ptr<Expression>> args)
-        : callee(std::move(callee))
-        , arguments(std::move(args)) {
-        type = ExpressionType::Call;
-    }
+  UnaryExpression(const std::string &op, std::unique_ptr<Expression> right)
+      : op(op), right(std::move(right)) {}
 };
 
-struct AssignmentExpr : public Expression {
-    std::string name;
-    std::shared_ptr<Expression> value;
+// Literal Expression
+struct LiteralExpression : public Expression {
+  std::string value;
 
-    AssignmentExpr(std::string name, std::shared_ptr<Expression> value)
-        : name(std::move(name))
-        , value(std::move(value)) {
-        type = ExpressionType::Assignment;
-    }
+  explicit LiteralExpression(const std::string &value) : value(value) {}
 };
 
-struct Annotation {
-    std::string name;
-    std::string argument;
+// Variable Expression
+struct VariableExpression : public Expression {
+  std::string name;
 
-    Annotation(const std::string& name, const std::string& arg = "")
-        : name(name)
-        , argument(arg) {}
+  explicit VariableExpression(const std::string &name) : name(name) {}
+};
+
+// Call Expression
+struct CallExpression : public Expression {
+  std::string callee;
+  std::vector<std::unique_ptr<Expression>> arguments;
+
+  CallExpression(const std::string &callee,
+                 std::vector<std::unique_ptr<Expression>> args)
+      : callee(callee), arguments(std::move(args)) {}
+};
+
+// Index Expression
+struct IndexExpression : public Expression {
+  std::unique_ptr<Expression> collection;
+  std::unique_ptr<Expression> index;
+
+  IndexExpression() = default;
+};
+
+// Parenthesized Expression
+struct ParenthesizedExpression : public Expression {
+  std::unique_ptr<Expression> expression;
+
+  explicit ParenthesizedExpression(std::unique_ptr<Expression> expr)
+      : expression(std::move(expr)) {}
+};
+
+// Measure Expression
+struct MeasureExpression : public Expression {
+  std::unique_ptr<Expression> qubit;
+
+  MeasureExpression(std::unique_ptr<Expression> qubit)
+      : qubit(std::move(qubit)) {}
+};
+
+// Assignment Expression
+struct AssignmentExpression : public Expression {
+  std::string name;
+  std::unique_ptr<Expression> value;
+
+  AssignmentExpression(std::string name, std::unique_ptr<Expression> value)
+      : name(std::move(name)), value(std::move(value)) {}
+};
+
+// Type Nodes
+struct PrimitiveType : public Type {
+  std::string name;
+
+  PrimitiveType(const std::string &name) : name(name) {}
+};
+
+struct LogicalType : public Type {
+  std::string code;
+
+  LogicalType(const std::string &code) : code(code) {}
+};
+
+struct ArrayType : public Type {
+  std::unique_ptr<Type> elementType;
+
+  ArrayType(std::unique_ptr<Type> elementType)
+      : elementType(std::move(elementType)) {}
+};
+
+struct VoidType : public Type {
+  VoidType() = default;
+};
+
+// Parameter
+struct Parameter : public ASTNode {
+  std::string name;
+  std::unique_ptr<Type> type;
+
+  Parameter() = default;
+};
+
+// Annotation
+struct AnnotationNode : public ASTNode {
+  std::string name;
+  std::string value;
+
+  AnnotationNode() = default;
+  AnnotationNode(const std::string &name, const std::string &value)
+      : name(name), value(value) {}
+};
+
+// Function Declaration
+struct FunctionDeclaration : public ASTNode {
+  std::string name;
+  std::vector<std::unique_ptr<Parameter>> params;
+  std::unique_ptr<Type> returnType;
+  std::unique_ptr<BlockStatement> body;
+  std::vector<std::unique_ptr<AnnotationNode>> annotations;
+  bool hasQuantumAnnotation;
+
+  FunctionDeclaration() = default;
+};
+
+// Class Declaration
+struct ClassDeclaration : public ASTNode {
+  std::string name;
+  std::vector<std::unique_ptr<FunctionDeclaration>> methods;
+
+  ClassDeclaration() = default;
+};
+
+// Program
+struct Program : public ASTNode {
+  std::vector<std::unique_ptr<ImportStatement>> imports;
+  std::vector<std::unique_ptr<FunctionDeclaration>> functions;
+  std::vector<std::unique_ptr<ClassDeclaration>> classes;
+  std::vector<std::unique_ptr<Statement>> statements;
+
+  Program() = default;
 };

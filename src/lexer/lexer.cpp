@@ -63,8 +63,9 @@ void Lexer::skipComment() {
 }
 
 void Lexer::reportError(const std::string &msg) {
-  std::cerr << "[Quanta Lexer Error] Line " << line << ", Col " << column
-            << ": " << msg << "\n";
+  std::cerr << "[Quanta Lexer Error]"
+            << "\n"
+            << "Line " << line << ", Col " << column << ": " << msg << "\n";
   std::exit(1);
 }
 
@@ -94,6 +95,12 @@ Token Lexer::scanToken() {
     return makeToken(TokenType::Slash, "/");
   case '%':
     return makeToken(TokenType::Percent, "%");
+  case '>':
+    return match('=') ? makeToken(TokenType::GreaterEqual, ">=")
+                      : makeToken(TokenType::Greater, ">");
+  case '<':
+    return match('=') ? makeToken(TokenType::LessEqual, "<=")
+                      : makeToken(TokenType::Less, "<");
   case ';':
     return makeToken(TokenType::Semicolon, ";");
   case ',':
@@ -103,7 +110,7 @@ Token Lexer::scanToken() {
   case ':':
     return makeToken(TokenType::Colon, ":");
   case '@':
-    return scanAnnotation();
+    return makeToken(TokenType::At, "@");
   case '"':
     return scanString();
   case '\'':
@@ -177,6 +184,11 @@ Token Lexer::scanIdentifierOrKeyword() {
       {"final", TokenType::Final},
       {"reset", TokenType::Reset},
 
+      // Annotation Values
+      {"quantum", TokenType::Quantum},
+      {"adjoint", TokenType::Adjoint},
+      {"state", TokenType::State},
+
       // Built ins
       {"echo", TokenType::Echo}};
 
@@ -220,23 +232,4 @@ Token Lexer::scanChar() {
   reportError("Unterminated char literal");
   return makeToken(TokenType::Unknown,
                    source.substr(start - 1, position - start + 1));
-}
-
-Token Lexer::scanAnnotation() {
-  size_t start = position;
-  while (isalnum(peek()))
-    advance();
-
-  std::string annotation = source.substr(start, position - start);
-
-  // Annotations
-  if (annotation == "quantum")
-    return makeToken(TokenType::Quantum, "@quantum");
-  if (annotation == "adjoint")
-    return makeToken(TokenType::Adjoint, "@adjoint");
-  if (annotation == "state")
-    return makeToken(TokenType::State, "@state");
-
-  reportError("Unknown annotation: @" + annotation);
-  return makeToken(TokenType::Unknown, "@" + annotation);
 }

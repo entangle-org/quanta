@@ -1,293 +1,648 @@
 #include "parser.hpp"
 #include <iostream>
 
-Parser::Parser(const std::vector<Token>& tokens)
-    : tokens(tokens)
-    , current(0) {}
+Parser::Parser(const std::vector<Token> &tokens) : tokens(tokens), current(0) {}
 
-std::shared_ptr<Program> Parser::parse() {
-    auto program = std::make_shared<Program>();
-    while (!check(TokenType::Eof)) {
-        program->statements.push_back(parseStatement());
-    }
-    return program;
-}
+// Token manipulation
 
-const Token& Parser::peek() const {
-    return tokens[current];
+const Token &Parser::peek() const {
+  if (current >= tokens.size())
+    return tokens.back();
+  return tokens[current];
 }
-const Token& Parser::previous() const {
-    return tokens[current - 1];
+const Token &Parser::previous() const { return tokens[current - 1]; }
+const Token &Parser::advance() {
+  if (!isAtEnd())
+    current++;
+  return previous();
 }
-const Token& Parser::advance() {
-    if (!check(TokenType::Eof))
-        current++;
-    return previous();
+const Token &Parser::expect(TokenType type, const std::string &message) {
+  if (check(type))
+    return advance();
+  reportError(message);
+  return peek();
 }
 
+// Token matching
 bool Parser::match(TokenType type) {
-    if (check(type)) {
-        advance();
-        return true;
-    }
-    return false;
+  if (check(type)) {
+    advance();
+    return true;
+  }
+  return false;
 }
-
 bool Parser::check(TokenType type) const {
-    return peek().type == type;
+  if (isAtEnd())
+    return false;
+  return peek().type == type;
+}
+bool Parser::checkNext(TokenType type) const {
+  if (current + 1 >= tokens.size())
+    return false;
+  return tokens[current + 1].type == type;
+}
+bool Parser::checkFunctionAnnotation() const {
+  if (!check(TokenType::At))
+    return false;
+  if (!checkNext(TokenType::Quantum) && !checkNext(TokenType::Adjoint))
+    return false;
+  return true;
 }
 
-const Token& Parser::consumeOrError(TokenType type, const std::string& message) {
-    if (check(type))
-        return advance();
-    std::cerr << "[Parser Error] Line " << peek().line << ", Col " << peek().column << ": " << message << "\n";
-    std::exit(1);
+bool Parser::isAtEnd() const { return peek().type == TokenType::Eof; }
+
+// Error
+void Parser::reportError(const std::string &message) {
+  const Token &token = peek();
+  std::cerr << "[Quanta Parser Error]"
+            << "\n"
+            << "Line " << token.line << ", Col " << token.column
+            << ", Token = '" << token.value << "'\n"
+            << message << "\n";
+  std::exit(1);
 }
 
-const void Parser::error(const std::string& message, const int& line, const int& column) {
-    std::cerr << "[Parser Error] Line " << line << ", Col " << column << ": " << message << "\n";
-    std::exit(1);
+// Main parse function
+std::unique_ptr<Program> Parser::parse() {
+  auto program = std::make_unique<Program>();
+
+  while (!isAtEnd()) {
+    if (check(TokenType::Import)) {
+      program->imports.push_back(parseImport());
+    } else if (check(TokenType::Function) || checkFunctionAnnotation()) {
+      program->functions.push_back(parseFunction());
+    } else if (check(TokenType::Class)) {
+      program->classes.push_back(parseClass());
+    } else {
+      program->statements.push_back(parseTopLevelStatement());
+    }
+  }
+
+  return program;
 }
 
-bool Parser::isPrimitive(TokenType type) const {
-    return type == TokenType::Int || type == TokenType::Float || type == TokenType::Qubit || type == TokenType::Char ||
-           type == TokenType::String || type == TokenType::Bit;
+// Top level
+
+// import module;
+std::unique_ptr<ImportStatement> Parser::parseImport() {
+  expect(TokenType::Import, "Expected 'import' keyword");
+
+  auto stmt = std::make_unique<ImportStatement>();
+  if (!check(TokenType::Identifier)) {
+    reportError("Expected module name after 'import'");
+  }
+
+  stmt->module = advance().value;
+  expect(TokenType::Semicolon, "Expected ';' after import statement");
+
+  return stmt;
 }
 
-std::shared_ptr<Statement> Parser::parseStatement() {
-    if (match(TokenType::Return))
-        return parseReturnStmt();
-    if (match(TokenType::Reset))
-        return parseResetStmt();
+// Function Declaration
+std::unique_ptr<FunctionDeclaration> Parser::parseFunction() {
+  auto func = std::make_unique<FunctionDeclaration>();
 
-    std::vector<Annotation> annotations;
-    if (check(TokenType::At)) {
-        annotations = parseAnnotations();
+  // Parse annotations
+  while (check(TokenType::At)) {
+    advance();
+    if (match(TokenType::Quantum) || match(TokenType::Adjoint)) {
+      std::string name = previous().value;
+      std::string value = "";
+      func->annotations.push_back(
+          std::make_unique<AnnotationNode>(AnnotationNode{name, value}));
+      func->hasQuantumAnnotation = true;
+    } else {
+      reportError("Expected annotation name after '@'");
     }
+  }
 
-    if (check(TokenType::Function)) {
-        return parseFunctionDecl(annotations);
+  expect(TokenType::Function, "Expected 'function' keyword");
+
+  // Parse function name
+  if (!check(TokenType::Identifier)) {
+    reportError("Expected function name after 'function' keyword");
+  }
+  func->name = advance().value;
+
+  // Parse parameters
+  expect(TokenType::LParen, "Expected '(' after function name");
+  while (!check(TokenType::RParen)) {
+    auto param = std::make_unique<Parameter>();
+
+    param->type = parseType(); // <- use full type parser
+
+    if (!check(TokenType::Identifier)) {
+      reportError("Expected parameter name");
     }
+    param->name = advance().value;
 
-    if (check(TokenType::Final) || isPrimitive(peek().type)) {
-        return parseVariableDecl(annotations);
-    }
+    func->params.push_back(std::move(param));
 
-    if (!annotations.empty()) {
-        error("Unexpected annotations on non-declarative statement", peek().line, peek().column);
-    }
+    if (!match(TokenType::Comma))
+      break;
+  }
+  expect(TokenType::RParen, "Expected ')' after parameters");
 
-    return parseExpressionStmt();
+  // Return type
+  expect(TokenType::Arrow, "Expected '->' before return type");
+
+  func->returnType = parseType();
+
+  // Body
+  func->body = parseBlock();
+
+  return func;
 }
 
-std::shared_ptr<Statement> Parser::parseFunctionDecl(const std::vector<Annotation>& annotations) {
-    bool isQuantum = false;
-    bool isAdjoint = false;
+std::unique_ptr<ClassDeclaration> Parser::parseClass() {
+  expect(TokenType::Class, "Expected 'class' keyword");
 
-    for (const auto& annotation : annotations) {
-        if (annotation.name == "quantum") {
-            isQuantum = true;
-        } else if (annotation.name == "adjoint") {
-            isAdjoint = true;
-        } else {
-            error("Unknown annotation @" + annotation.name, peek().line, peek().column);
-        }
+  auto clazz = std::make_unique<ClassDeclaration>();
+
+  if (!check(TokenType::Identifier)) {
+    reportError("Expected class name after 'class'");
+  }
+  clazz->name = advance().value;
+
+  expect(TokenType::LBrace, "Expected '{' to start class body");
+
+  while (!check(TokenType::RBrace) && !isAtEnd()) {
+    if (check(TokenType::Function) || check(TokenType::At)) {
+      clazz->methods.push_back(parseFunction());
+    } else {
+      reportError("Only functions are allowed inside class declarations");
     }
+  }
 
-    if (isAdjoint && !isQuantum) {
-        error("@adjoint annotation is only allowed on @quantum functions", peek().line, peek().column);
-    }
+  expect(TokenType::RBrace, "Expected '}' to end class body");
 
-    consumeOrError(TokenType::Function, "Expected 'function'");
-    std::string name = consumeOrError(TokenType::Identifier, "Expected function name").value;
-    consumeOrError(TokenType::LParen, "Expected '('");
-
-    std::vector<Parameter> params;
-    if (!check(TokenType::RParen)) {
-        do {
-            std::string type = consumeOrError(peek().type, "Expected parameter type").value;
-            std::string name = consumeOrError(TokenType::Identifier, "Expected parameter name").value;
-            params.push_back({type, name});
-        } while (match(TokenType::Comma));
-    }
-
-    consumeOrError(TokenType::RParen, "Expected ')'");
-    consumeOrError(TokenType::Arrow, "Expected '->'");
-    std::string returnType = consumeOrError(peek().type, "Expected return type").value;
-    if (isQuantum && !(returnType == "void" || returnType == "bit")) {
-        error("@quantum functions may only return 'void' or 'bit'", peek().line, peek().column);
-    }
-    consumeOrError(TokenType::LBrace, "Expected '{'");
-
-    auto func = std::make_shared<FunctionDecl>(isQuantum, name, params, returnType);
-    func->isAdjoint = isAdjoint;
-
-    while (!check(TokenType::RBrace)) {
-        func->body.push_back(parseStatement());
-    }
-
-    consumeOrError(TokenType::RBrace, "Expected '}'");
-    return func;
+  return clazz;
 }
 
-std::shared_ptr<Statement> Parser::parseVariableDecl(const std::vector<Annotation>& annotations) {
-    std::shared_ptr<Expression> initialiser = nullptr;
-    bool isFinal = false;
-    bool isArray = false;
-    int arraySize = 0;
+std::unique_ptr<Statement> Parser::parseTopLevelStatement() {
+  bool isFinal = match(TokenType::Final);
 
-    if (!annotations.empty()) {
-        for (const auto& annotation : annotations) {
-            if (annotation.name == "state") {
-                if (annotation.argument.empty()) {
-                    error("@state must have a char literal argument", peek().line, peek().column);
-                }
-                initialiser = std::make_shared<LiteralExpr>(annotation.argument);
-            } else {
-                error("Unknown annotation @" + annotation.name, peek().line, peek().column);
-            }
-        }
-    }
+  if (check(TokenType::At) || check(TokenType::Int) ||
+      check(TokenType::Float) || check(TokenType::String) ||
+      check(TokenType::Char) || check(TokenType::Bit) ||
+      check(TokenType::Qubit)) {
+    return parseVariableDeclaration(isFinal);
+  }
 
-    if (match(TokenType::Final))
-        isFinal = true;
-
-    std::string primitive = consumeOrError(peek().type, "Expected type").value;
-
-    if (match(TokenType::LBracket)) {
-        arraySize = std::stoi(consumeOrError(TokenType::IntegerLiteral, "Expected array size").value);
-        consumeOrError(TokenType::RBracket, "Expected ']'");
-        isArray = true;
-    }
-
-    std::string name = consumeOrError(TokenType::Identifier, "Expected variable name").value;
-
-    if (match(TokenType::Equals)) {
-        initialiser = parseExpression();
-    }
-
-    consumeOrError(TokenType::Semicolon, "Expected ';'");
-
-    auto decl = std::make_shared<VariableDecl>(primitive, name, initialiser);
-    decl->isFinal = isFinal;
-    decl->isArray = isArray;
-    decl->arraySize = arraySize;
-    return decl;
+  // Fallback to expression statement
+  auto exprStmt = std::make_unique<ExpressionStatement>();
+  exprStmt->expression = parseExpression();
+  expect(TokenType::Semicolon, "Expected ';' after expression");
+  return exprStmt;
 }
 
-std::shared_ptr<Statement> Parser::parseExpressionStmt() {
-    auto expr = parseExpression();
-    consumeOrError(TokenType::Semicolon, "Expected ';'");
-    return std::make_shared<ExpressionStmt>(expr);
+// Declarations
+std::unique_ptr<VariableDeclaration>
+Parser::parseVariableDeclaration(bool isFinal) {
+  auto var = std::make_unique<VariableDeclaration>();
+  var->isFinal = isFinal;
+
+  // Annotations
+  var->annotations = parseAnnotations();
+
+  // Type
+  var->varType = parseType();
+
+  // Name
+  if (!check(TokenType::Identifier)) {
+    reportError("Expected variable name");
+  }
+  var->name = advance().value;
+
+  // Initializer
+  if (match(TokenType::Equals)) {
+    var->initializer = parseExpression();
+  }
+
+  expect(TokenType::Semicolon, "Expected ';' after variable declaration");
+
+  return var;
 }
 
-std::shared_ptr<Statement> Parser::parseResetStmt() {
+// @quantum, @adjoint, @state
+std::unique_ptr<AnnotationNode> Parser::parseAnnotation() {
+  expect(TokenType::At, "Expected '@' to begin annotation");
+
+  if (!check(TokenType::Quantum) && !check(TokenType::Adjoint) &&
+      !check(TokenType::State)) {
+    reportError("Unknown annotation");
+  }
+
+  auto nameToken = advance();
+  auto annotation = std::make_unique<AnnotationNode>();
+  annotation->name = nameToken.value;
+
+  if (annotation->name == "state") {
+    expect(TokenType::LParen, "Expected '(' after @state");
+    if (!check(TokenType::CharLiteral) && !check(TokenType::StringLiteral)) {
+      reportError("Expected character or string inside @state(...)");
+    }
+    annotation->value = advance().value;
+    expect(TokenType::RParen, "Expected ')' after @state argument");
+  }
+
+  return annotation;
+}
+
+std::vector<std::unique_ptr<AnnotationNode>> Parser::parseAnnotations() {
+  std::vector<std::unique_ptr<AnnotationNode>> annotations;
+
+  while (check(TokenType::At)) {
+    annotations.push_back(parseAnnotation());
+  }
+
+  return annotations;
+}
+
+// Statements
+std::unique_ptr<Statement> Parser::parseStatement() {
+  bool isFinal = match(TokenType::Final);
+
+  // Variable declarations inside blocks
+  if (check(TokenType::Int) || check(TokenType::Float) ||
+      check(TokenType::String) || check(TokenType::Char) ||
+      check(TokenType::Bit) || check(TokenType::Qubit)) {
+    return parseVariableDeclaration(isFinal);
+  }
+
+  if (match(TokenType::Return))
+    return parseReturn();
+  if (match(TokenType::If))
+    return parseIf();
+  if (match(TokenType::For))
+    return parseFor();
+  if (match(TokenType::Echo))
+    return parseEcho();
+  if (match(TokenType::Reset))
+    return parseReset();
+  if (match(TokenType::Measure))
+    return parseMeasure();
+  if (check(TokenType::Identifier) && checkNext(TokenType::Equals))
+    return parseAssignment();
+  return parseExpressionStatement();
+}
+
+// {...}
+std::unique_ptr<BlockStatement> Parser::parseBlock() {
+  expect(TokenType::LBrace, "Expected '{' to start block");
+
+  auto block = std::make_unique<BlockStatement>();
+  while (!check(TokenType::RBrace) && !isAtEnd()) {
+    block->statements.push_back(parseStatement());
+  }
+
+  expect(TokenType::RBrace, "Expected '}' to end block");
+  return block;
+}
+
+// return expr;
+std::unique_ptr<ReturnStatement> Parser::parseReturn() {
+  auto stmt = std::make_unique<ReturnStatement>();
+
+  if (!check(TokenType::Semicolon)) {
+    stmt->value = parseExpression();
+  }
+
+  expect(TokenType::Semicolon, "Expected ';' after return value");
+  return stmt;
+}
+
+// if (cond) {...}
+// NOTE: while elseBranch field exists, we are setting to nullptr here but this
+// can be extended in future
+std::unique_ptr<IfStatement> Parser::parseIf() {
+  expect(TokenType::LParen, "Expected '(' after 'if'");
+  auto condition = parseExpression();
+  expect(TokenType::RParen, "Expected ')' after condition");
+
+  auto thenBranch = parseBlock();
+
+  auto stmt = std::make_unique<IfStatement>();
+  stmt->condition = std::move(condition);
+  stmt->thenBranch = std::move(thenBranch);
+  stmt->elseBranch = nullptr;
+
+  return stmt;
+}
+
+// for (init; cond; update) {...}
+std::unique_ptr<ForStatement> Parser::parseFor() {
+  expect(TokenType::LParen, "Expected '(' after 'for'");
+
+  std::unique_ptr<Statement> initializer = nullptr;
+
+  if (!check(TokenType::Semicolon)) {
+    bool isFinal = match(TokenType::Final);
+
+    if (check(TokenType::Int) || check(TokenType::Float) ||
+        check(TokenType::Char) || check(TokenType::String) ||
+        check(TokenType::Bit) || check(TokenType::Qubit)) {
+      initializer = parseVariableDeclaration(isFinal);
+    } else {
+      if (isFinal) {
+        reportError("Expected variable type after 'final'");
+      }
+      initializer = parseExpressionStatement();
+    }
+  } else {
+    advance();
+  }
+
+  auto condition = parseExpression();
+  expect(TokenType::Semicolon, "Expected ';' after loop condition");
+
+  auto increment = parseExpression();
+  expect(TokenType::RParen, "Expected ')' after for clause");
+
+  auto body = parseBlock();
+
+  auto stmt = std::make_unique<ForStatement>();
+  stmt->initializer = std::move(initializer);
+  stmt->condition = std::move(condition);
+  stmt->increment = std::move(increment);
+  stmt->body = std::move(body);
+
+  return stmt;
+}
+
+// echo(expr);
+std::unique_ptr<EchoStatement> Parser::parseEcho() {
+  expect(TokenType::LParen, "Expected '(' after 'echo'");
+  auto value = parseExpression();
+  expect(TokenType::RParen, "Expected ')' after echo argument");
+  expect(TokenType::Semicolon, "Expected ';' after echo statement");
+
+  auto stmt = std::make_unique<EchoStatement>();
+  stmt->value = std::move(value);
+  return stmt;
+}
+
+// reset q0;
+std::unique_ptr<ResetStatement> Parser::parseReset() {
+  auto stmt = std::make_unique<ResetStatement>();
+  stmt->target = parseExpression();
+  expect(TokenType::Semicolon, "Expected ';' after reset target");
+  return stmt;
+}
+
+// measure q0;
+std::unique_ptr<MeasureStatement> Parser::parseMeasure() {
+  auto stmt = std::make_unique<MeasureStatement>();
+  stmt->qubit = parseExpression();
+  expect(TokenType::Semicolon, "Expected ';' after measure target");
+  return stmt;
+}
+
+// x = expr;
+std::unique_ptr<AssignmentStatement> Parser::parseAssignment() {
+  if (!check(TokenType::Identifier)) {
+    reportError("Expected variable name in assignment");
+  }
+
+  std::string name = advance().value;
+  expect(TokenType::Equals, "Expected '=' in assignment");
+
+  auto stmt = std::make_unique<AssignmentStatement>();
+  stmt->name = name;
+  stmt->value = parseExpression();
+
+  expect(TokenType::Semicolon, "Expected ';' after assignment");
+  return stmt;
+}
+
+std::unique_ptr<ExpressionStatement> Parser::parseExpressionStatement() {
+  auto expr = parseExpression();
+  expect(TokenType::Semicolon, "Expected ';' after expression");
+  auto stmt = std::make_unique<ExpressionStatement>();
+  stmt->expression = std::move(expr);
+  return stmt;
+}
+
+// Expressions
+
+std::unique_ptr<Expression> Parser::parseExpression() {
+  return parseAssignmentExpression();
+}
+
+std::unique_ptr<Expression> Parser::parseAssignmentExpression() {
+  auto expr = parseComparison();
+
+  if (match(TokenType::Equals)) {
+    auto equals = previous();
+
+    // Must be a variable on the left-hand side
+    if (auto varExpr = dynamic_cast<VariableExpression *>(expr.get())) {
+      std::string name = varExpr->name;
+      auto value = parseAssignmentExpression();
+      return std::make_unique<AssignmentExpression>(name, std::move(value));
+    } else {
+      reportError("Invalid assignment target");
+    }
+  }
+
+  return expr;
+}
+
+std::unique_ptr<Expression> Parser::parseComparison() {
+  auto expr = parseAdditive();
+
+  while (match(TokenType::Greater) || match(TokenType::Less) ||
+         match(TokenType::GreaterEqual) || match(TokenType::LessEqual)) {
+    std::string op = previous().value;
+    auto right = parseAdditive();
+    expr = std::make_unique<BinaryExpression>(
+        BinaryExpression{op, std::move(expr), std::move(right)});
+  }
+
+  return expr;
+}
+
+std::unique_ptr<Expression> Parser::parseAdditive() {
+  auto expr = parseMultiplicative();
+
+  while (match(TokenType::Plus) || match(TokenType::Minus)) {
+    std::string op = previous().value;
+    auto right = parseMultiplicative();
+    expr = std::make_unique<BinaryExpression>(
+        BinaryExpression{op, std::move(expr), std::move(right)});
+  }
+
+  return expr;
+}
+
+std::unique_ptr<Expression> Parser::parseMultiplicative() {
+  auto expr = parseUnary();
+
+  while (match(TokenType::Star) || match(TokenType::Slash) ||
+         match(TokenType::Percent)) {
+    std::string op = previous().value;
+    auto right = parseUnary();
+    expr = std::make_unique<BinaryExpression>(
+        BinaryExpression{op, std::move(expr), std::move(right)});
+  }
+
+  return expr;
+}
+
+std::unique_ptr<Expression> Parser::parseUnary() {
+  if (match(TokenType::Minus)) {
+    std::string op = previous().value;
+    auto right = parseUnary();
+    return std::make_unique<UnaryExpression>(
+        UnaryExpression{op, std::move(right)});
+  }
+
+  return parseCall();
+}
+
+std::unique_ptr<Expression> Parser::parseCall() {
+  auto expr = parsePrimary();
+
+  while (match(TokenType::LParen)) {
+    auto args = parseArgumentList();
+    auto *varExpr = dynamic_cast<VariableExpression *>(expr.get());
+    if (!varExpr) {
+      reportError("Only variables can be used as function names in calls");
+    }
+    expr = std::make_unique<CallExpression>(varExpr->name, std::move(args));
+  }
+
+  return expr;
+}
+
+std::unique_ptr<Expression> Parser::parsePrimary() {
+  if (match(TokenType::IntegerLiteral) || match(TokenType::FloatLiteral) ||
+      match(TokenType::StringLiteral) || match(TokenType::CharLiteral)) {
+    return std::make_unique<LiteralExpression>(
+        LiteralExpression{previous().value});
+  }
+
+  if (match(TokenType::Measure)) {
     auto target = parseExpression();
-    consumeOrError(TokenType::Semicolon, "Expected ';'");
-    return std::make_shared<ResetStmt>(target);
-}
+    return std::make_unique<MeasureExpression>(
+        MeasureExpression{std::move(target)});
+  }
 
-std::shared_ptr<Statement> Parser::parseAdjointStmt() {
-    consumeOrError(TokenType::At, "Expected '@'");
-    Token keyword = consumeOrError(TokenType::Identifier, "Expected 'adjoint'");
-    if (keyword.value != "adjoint") {
-        error("Unknown annotation @" + keyword.value, keyword.line, keyword.column);
-    }
+  if (match(TokenType::Identifier)) {
+    return std::make_unique<VariableExpression>(
+        VariableExpression{previous().value});
+  }
 
-    std::string callee = consumeOrError(TokenType::Identifier, "Expected function name").value;
-    consumeOrError(TokenType::LParen, "Expected '('");
-
-    std::vector<std::shared_ptr<Expression>> args;
-    if (!check(TokenType::RParen)) {
-        do {
-            args.push_back(parseExpression());
-        } while (match(TokenType::Comma));
-    }
-
-    consumeOrError(TokenType::RParen, "Expected ')'");
-    consumeOrError(TokenType::Semicolon, "Expected ';'");
-
-    return std::make_shared<AdjointStmt>(callee, args);
-}
-
-std::shared_ptr<Statement> Parser::parseReturnStmt() {
+  if (match(TokenType::LParen)) {
     auto expr = parseExpression();
-    consumeOrError(TokenType::Semicolon, "Expected ';'");
-    return std::make_shared<ReturnStmt>(expr);
+    expect(TokenType::RParen, "Expected ')' after expression");
+    return std::make_unique<ParenthesizedExpression>(
+        ParenthesizedExpression{std::move(expr)});
+  }
+
+  reportError("Expected expression");
+  return nullptr;
 }
 
-std::shared_ptr<Expression> Parser::parseExpression() {
-    auto expr = parsePrimary();
+// Literals
+std::unique_ptr<Expression> Parser::parseLiteral() {
+  const Token &token = advance();
 
-    if (match(TokenType::Equals)) {
-        if (auto id = std::dynamic_pointer_cast<IdentifierExpr>(expr)) {
-            auto value = parseExpression();
-            return std::make_shared<AssignmentExpr>(id->name, value);
-        } else {
-            error("Invalid assignment target", previous().line, previous().column);
-        }
-    }
-
-    return expr;
+  switch (token.type) {
+  case TokenType::IntegerLiteral:
+    return std::make_unique<LiteralExpression>(LiteralExpression{token.value});
+  case TokenType::FloatLiteral:
+    return std::make_unique<LiteralExpression>(LiteralExpression{token.value});
+  case TokenType::CharLiteral:
+    return std::make_unique<LiteralExpression>(LiteralExpression{token.value});
+  case TokenType::StringLiteral:
+    return std::make_unique<LiteralExpression>(LiteralExpression{token.value});
+  default:
+    reportError("Expected a literal value.");
+    return nullptr;
+  }
 }
 
-std::shared_ptr<Expression> Parser::parsePrimary() {
-    if (match(TokenType::IntegerLiteral) || match(TokenType::FloatLiteral) || match(TokenType::StringLiteral) ||
-        match(TokenType::CharLiteral)) {
-        return std::make_shared<LiteralExpr>(previous().value);
-    }
+// Types
 
-    if (match(TokenType::Identifier)) {
-        std::string name = previous().value;
-        if (check(TokenType::LParen)) {
-            return parseCall(std::make_shared<IdentifierExpr>(name));
-        }
-        return std::make_shared<IdentifierExpr>(name);
-    }
+std::unique_ptr<Type> Parser::parseType() {
+  auto baseType = parsePrimitiveType();
 
-    if (match(TokenType::Measure)) {
-        auto target = parsePrimary();
-        return std::make_shared<CallExpr>("measure", std::vector<std::shared_ptr<Expression>>{target});
-    }
+  if (match(TokenType::LBracket)) {
+    expect(TokenType::RBracket, "Expected ']' after '[' in array type");
+    return parseArrayType(std::move(baseType));
+  }
 
-    error("Unexpected token " + peek().value, peek().line, peek().column);
+  return baseType;
 }
 
-std::shared_ptr<Expression> Parser::parseCall(std::shared_ptr<Expression> callee) {
-    consumeOrError(TokenType::LParen, "Expected '('");
-    std::vector<std::shared_ptr<Expression>> args;
-    if (!check(TokenType::RParen)) {
-        do {
-            args.push_back(parseExpression());
-        } while (match(TokenType::Comma));
-    }
-    consumeOrError(TokenType::RParen, "Expected ')'");
-    return std::make_shared<CallExpr>(dynamic_cast<IdentifierExpr&>(*callee).name, args);
+std::unique_ptr<Type> Parser::parsePrimitiveType() {
+  const Token &token = advance();
+
+  if (token.type == TokenType::Identifier) {
+    return std::make_unique<PrimitiveType>(PrimitiveType{token.value});
+  }
+
+  switch (token.type) {
+  case TokenType::Int:
+  case TokenType::Float:
+  case TokenType::String:
+  case TokenType::Char:
+  case TokenType::Qubit:
+  case TokenType::Bit:
+    return std::make_unique<PrimitiveType>(PrimitiveType{token.value});
+  case TokenType::Logical:
+    return std::make_unique<LogicalType>(LogicalType{token.value});
+  case TokenType::Void:
+    return std::make_unique<VoidType>();
+  default:
+    reportError("Expected a valid type.");
+    return nullptr;
+  }
 }
 
-std::vector<Annotation> Parser::parseAnnotations() {
-    std::vector<Annotation> annotations;
-    while (match(TokenType::At)) {
-        annotations.push_back(parseSingleAnnotation());
-    }
-    return annotations;
+std::unique_ptr<Type>
+Parser::parseArrayType(std::unique_ptr<Type> elementType) {
+  return std::make_unique<ArrayType>(ArrayType{std::move(elementType)});
 }
 
-Annotation Parser::parseSingleAnnotation() {
-    Token ident = consumeOrError(TokenType::Identifier, "Expected annotation name after '@'");
+// Parameters and Argments
+std::vector<std::unique_ptr<Parameter>> Parser::parseParameterList() {
+  std::vector<std::unique_ptr<Parameter>> parameters;
 
-    std::string name = ident.value;
-    std::string argument;
+  while (!check(TokenType::RParen)) {
+    auto param = std::make_unique<Parameter>();
 
-    if (match(TokenType::LParen)) {
-        if (check(TokenType::CharLiteral)) {
-            Token arg = advance();
-            argument = arg.value;
-        } else {
-            error("Only char literals allowed as annotation arguments", peek().line, peek().column);
-        }
-        consumeOrError(TokenType::RParen, "Expected ')' after annotation argument");
+    // Parse type
+    param->type = parseType();
+
+    // Parse name
+    if (!check(TokenType::Identifier)) {
+      reportError("Expected parameter name.");
     }
+    param->name = advance().value;
 
-    return Annotation(name, argument);
+    parameters.push_back(std::move(param));
+
+    if (!match(TokenType::Comma))
+      break;
+  }
+
+  return parameters;
+}
+
+std::vector<std::unique_ptr<Expression>> Parser::parseArgumentList() {
+  std::vector<std::unique_ptr<Expression>> args;
+
+  if (check(TokenType::RParen)) {
+    advance();
+    return args;
+  }
+
+  do {
+    args.push_back(parseExpression());
+  } while (match(TokenType::Comma));
+
+  expect(TokenType::RParen, "Expected ')' after argument list");
+  return args;
 }
