@@ -1,11 +1,11 @@
 #pragma once
 
-#include "TokenType.hpp"
+#include "token_type.hpp"
 #include <string>
 
 struct Token {
-    TokenType type;
-    std::string value;
-    int line;
-    int column;
+  TokenType type;
+  std::string value;
+  int line;
+  int column;
 };
