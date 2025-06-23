@@ -167,10 +167,43 @@ std::unique_ptr<ClassDeclaration> Parser::parseClass() {
   expect(TokenType::LBrace, "Expected '{' to start class body");
 
   while (!check(TokenType::RBrace) && !isAtEnd()) {
-    if (check(TokenType::Function) || check(TokenType::At)) {
-      clazz->methods.push_back(parseFunction());
+    // Handle @members("public") or @members("private")
+    if (check(TokenType::At) && checkNext(TokenType::Members)) {
+      advance();
+      advance();
+      expect(TokenType::LParen, "Expected '(' after @members");
+
+      if (!check(TokenType::StringLiteral)) {
+        reportError("Expected access modifier string in @members");
+      }
+      std::string accessModifier = advance().value;
+      if (accessModifier != "\"public\"" && accessModifier != "\"private\"") {
+        reportError(
+            "Invalid access modifier: must be \"public\" or \"private\"");
+      }
+      accessModifier = accessModifier.substr(1, accessModifier.length() - 2);
+
+      expect(TokenType::RParen, "Expected ')' after access modifier");
+
+      // Parse variable declarations inside the block
+      while (!check(TokenType::At) && !check(TokenType::RBrace)) {
+        bool isFinal = match(TokenType::Final);
+        auto member = parseVariableDeclaration(isFinal);
+
+        // Annotate with access level
+        member->access = accessModifier;
+        clazz->members.push_back(std::move(member));
+      }
+
+    } else if (check(TokenType::At) && checkNext(TokenType::Methods)) {
+      advance();
+      advance();
+      // Everything after this point must be functions
+      while (!check(TokenType::RBrace) && !isAtEnd()) {
+        clazz->methods.push_back(parseFunction());
+      }
     } else {
-      reportError("Only functions are allowed inside class declarations");
+      reportError("Only @members or @methods are allowed inside class body");
     }
   }
 

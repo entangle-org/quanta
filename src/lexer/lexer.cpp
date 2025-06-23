@@ -183,11 +183,15 @@ Token Lexer::scanIdentifierOrKeyword() {
       {"measure", TokenType::Measure},
       {"final", TokenType::Final},
       {"reset", TokenType::Reset},
+      {"public", TokenType::Public},
+      {"private", TokenType::Private},
 
       // Annotation Values
       {"quantum", TokenType::Quantum},
       {"adjoint", TokenType::Adjoint},
       {"state", TokenType::State},
+      {"members", TokenType::Members},
+      {"methods", TokenType::Methods},
 
       // Built ins
       {"echo", TokenType::Echo}};

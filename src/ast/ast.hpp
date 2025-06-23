@@ -28,6 +28,7 @@ struct ImportStatement : public Statement {
 // Variable Declaration
 struct VariableDeclaration : public Statement {
   std::string name;
+  std::string access;
   std::unique_ptr<Type> varType;
   std::unique_ptr<Expression> initializer;
   std::vector<std::unique_ptr<AnnotationNode>> annotations;
@@ -239,6 +240,7 @@ struct FunctionDeclaration : public ASTNode {
 // Class Declaration
 struct ClassDeclaration : public ASTNode {
   std::string name;
+  std::vector<std::unique_ptr<VariableDeclaration>> members;
   std::vector<std::unique_ptr<FunctionDeclaration>> methods;
 
   ClassDeclaration() = default;

@@ -27,12 +27,16 @@ enum class TokenType {
   Measure,
   Final,
   Reset,
+  Public,
+  Private,
 
   // Annotations
   At,
   Quantum,
   State,
   Adjoint,
+  Members,
+  Methods,
 
   // Operators and Punctuation
   Equals,
