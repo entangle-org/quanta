@@ -11,5 +11,4 @@ Makefile
 *.code-workspace
 
 # Binaries
-quanta
 *.exe
