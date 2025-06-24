@@ -1,0 +1,28 @@
+import quanta.core.gates.h;
+
+@quantum
+function random_bit() -> bit {
+    qubit q;
+    h(q);
+    return measure q;
+}
+
+function quantum_rng(int bits) -> {
+    int result = 0;
+    int i = 0;
+
+    while (i < bits) {
+        bit b = random_bit();
+        result = (result << 1) | b;
+        i = i + 1;
+    }
+
+    return result;
+}
+
+function main() -> int {
+    # 8-bit number
+    int r = quantum_rng(8)
+    echo("Quantum RNG produced: ", r);
+    return 0;
+}
