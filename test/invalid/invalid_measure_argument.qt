@@ -1,0 +1,5 @@
+function main() -> int {
+    int x = 5;
+    bit result = measure x; 
+    return 0;
+}

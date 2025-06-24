@@ -1,0 +1,83 @@
+# Primitive variable declarations
+int x = 5;
+int[] array;
+float y = 2.5f;
+string s = "hello";
+char c = 'q';
+bit b = 1;
+qubit q1;
+
+@state('0')
+qubit q2;
+
+@state("+") qubit q3;
+
+@state("-i") qubit q4;
+
+# final variable
+final int constant = 10;
+
+# function with return
+function add(int a, int b) -> int {
+    return a + b;
+}
+
+# void function using echo and expressions
+function greet(string name) -> void {
+    echo("Hello, " + name);
+}
+
+# nested function call
+function doubleAdd(int x) -> int {
+    return add(x, x);
+}
+
+# quantum function returning bit
+function check(qubit q) -> bit {
+    return measure q;
+}
+
+# quantum function returning void
+@quantum
+function entangle(qubit a, qubit b) -> void {
+    h(a);
+    cx(a, b);
+}
+
+# class definition
+class Math {
+    @members("private")
+        final float PI = 3.1415f;
+        final float E = 2.718f;
+
+    @methods
+        function *Math() -> void {
+            echo("Constructing Math class");
+        }
+
+        function area(float r) -> float {
+            return PI * r * r;
+        }
+}
+
+# if/else and for loop
+function run() -> void {
+    int count = 0;
+    for (int i = 0; i < 3; i = i + 1) {
+        echo("i = " + i);
+        count = count + i;
+    }
+
+    if (count > 0) {
+        echo("Count positive");
+    } else {
+        echo("Count zero");
+    }
+}
+
+# entrypoint
+function main() -> int {
+    greet("Quantum Dev");
+    run();
+    return 0;
+}

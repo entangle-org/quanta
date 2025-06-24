@@ -1,6 +1,8 @@
 #include "semantic.hpp"
 #include <iostream>
 #include <lexer/token.hpp>
+#include <sstream>
+#include <stdexcept>
 #include <unordered_set>
 
 Scope::Scope(std::shared_ptr<Scope> parent) : parent(std::move(parent)) {}
@@ -25,8 +27,9 @@ Symbol *Scope::resolve(const std::string &name) {
 std::shared_ptr<Scope> Scope::getParent() { return parent; }
 
 void Scope::reportError(const std::string &msg) {
-  std::cerr << "[Quanta Semantic Error]\n" << msg << "\n";
-  std::exit(1);
+  std::stringstream err;
+  err << "[Quanta Semantic Error]\n" << msg << "\n";
+  throw std::runtime_error(err.str());
 }
 
 void SemanticAnalyser::analyse(const Program *program) {
@@ -103,6 +106,20 @@ void SemanticAnalyser::analyseFunction(const FunctionDeclaration *func) {
 
   analyseBlock(func->body.get());
   exitScope();
+
+  if (!isVoidType(func->returnType.get())) {
+    bool hasReturn = false;
+    for (const auto &stmt : func->body->statements) {
+      if (dynamic_cast<const ReturnStatement *>(stmt.get())) {
+        hasReturn = true;
+        break;
+      }
+    }
+    if (!hasReturn) {
+      reportError("Non-void function '" + func->name +
+                  "' must have a return statement");
+    }
+  }
 
   inQuantumFunction = false;
 }
@@ -216,13 +233,13 @@ void SemanticAnalyser::analyseMeasure(const MeasureStatement *stmt) {
 void SemanticAnalyser::analyseAssignment(const AssignmentStatement *stmt) {
   auto sym = lookup(stmt->name);
   if (!sym) {
-    std::cerr << "[Semantic Error] Undeclared variable: " << stmt->name << "\n";
-    std::exit(1);
+    reportError("Undeclared variable: " + stmt->name);
   }
   if (sym->isFinal) {
-    std::cerr << "[Semantic Error] Cannot assign to final variable: "
-              << stmt->name << "\n";
-    std::exit(1);
+    reportError("Cannot assign to final variable: " + stmt->name);
+  }
+  if (sym->kind == SymbolKind::Function) {
+    reportError("Cannot assign to function: " + stmt->name);
   }
   analyseExpression(stmt->value.get());
 }
@@ -247,9 +264,7 @@ Type *SemanticAnalyser::analyseExpression(const Expression *expr) {
   } else if (auto paren = dynamic_cast<const ParenthesizedExpression *>(expr)) {
     return analyseExpression(paren->expression.get());
   }
-
-  std::cerr << "[Semantic Error] Unknown expression type\n";
-  std::exit(1);
+  reportError("Unknown expression type");
 }
 
 Type *SemanticAnalyser::analyseBinary(const BinaryExpression *expr) {
@@ -257,18 +272,19 @@ Type *SemanticAnalyser::analyseBinary(const BinaryExpression *expr) {
   auto right = analyseExpression(expr->right.get());
 
   if (!isSameType(left, right)) {
-    std::cerr << "[Type Error] Operands must be of the same type (got "
-              << typeToString(left) << " and " << typeToString(right) << ")\n";
-    std::exit(1);
+    std::stringstream err;
+    err << "[Type Error] Operands must be of the same type (got "
+        << typeToString(left) << " and " << typeToString(right) << ")\n";
+    reportError(err.str());
   }
 
   if (expr->op == "+" || expr->op == "-" || expr->op == "*" ||
       expr->op == "/" || expr->op == "%") {
     if (!isNumeric(left)) {
-      std::cerr << "[Type Error] Operator '" << expr->op
-                << "' requires numeric types (got " << typeToString(left)
-                << ")\n";
-      std::exit(1);
+      std::stringstream err;
+      err << "[Type Error] Operator '" << expr->op
+          << "' requires numeric types (got " << typeToString(left) << ")\n";
+      reportError(err.str());
     }
     return left;
   }
@@ -279,9 +295,9 @@ Type *SemanticAnalyser::analyseBinary(const BinaryExpression *expr) {
     return new PrimitiveType("bit");
   }
 
-  std::cerr << "[Semantic Error] Unsupported binary operator: " << expr->op
-            << "\n";
-  std::exit(1);
+  std::stringstream err;
+  err << "[Semantic Error] Unsupported binary operator: " << expr->op << "\n";
+  reportError(err.str());
 }
 
 Type *SemanticAnalyser::analyseUnary(const UnaryExpression *expr) {
@@ -289,16 +305,17 @@ Type *SemanticAnalyser::analyseUnary(const UnaryExpression *expr) {
 
   if (expr->op == "-") {
     if (!isNumeric(right)) {
-      std::cerr << "[Type Error] Unary '-' requires numeric type (got "
-                << typeToString(right) << ")\n";
-      std::exit(1);
+      std::stringstream err;
+      err << "[Type Error] Unary '-' requires numeric type (got "
+          << typeToString(right) << ")\n";
+      reportError(err.str());
     }
     return right;
   }
 
-  std::cerr << "[Semantic Error] Unsupported unary operator: " << expr->op
-            << "\n";
-  std::exit(1);
+  std::stringstream err;
+  err << "[Semantic Error] Unsupported unary operator: " << expr->op << "\n";
+  reportError(err.str());
 }
 
 Type *SemanticAnalyser::analyseLiteral(const LiteralExpression *expr) {
@@ -319,8 +336,9 @@ Type *SemanticAnalyser::analyseLiteral(const LiteralExpression *expr) {
 Type *SemanticAnalyser::analyseVariable(const VariableExpression *expr) {
   auto sym = lookup(expr->name);
   if (!sym) {
-    std::cerr << "[Semantic Error] Undeclared variable: " << expr->name << "\n";
-    std::exit(1);
+    std::stringstream err;
+    err << "[Semantic Error] Undeclared variable: " << expr->name << "\n";
+    reportError(err.str());
   }
   return sym->type;
 }
@@ -328,9 +346,9 @@ Type *SemanticAnalyser::analyseVariable(const VariableExpression *expr) {
 Type *SemanticAnalyser::analyseCall(const CallExpression *expr) {
   auto sym = lookup(expr->callee);
   if (!sym || sym->kind != SymbolKind::Function) {
-    std::cerr << "[Semantic Error] '" << expr->callee
-              << "' is not a function\n";
-    std::exit(1);
+    std::stringstream err;
+    err << "[Semantic Error] '" << expr->callee << "' is not a function\n";
+    reportError(err.str());
   }
 
   const auto &funcType = sym->type;
@@ -349,34 +367,38 @@ Type *SemanticAnalyser::analyseMeasure(const MeasureExpression *expr) {
   auto t = analyseExpression(expr->qubit.get());
   if (auto p = dynamic_cast<PrimitiveType *>(t)) {
     if (p->name != "qubit") {
-      std::cerr << "[Semantic Error] measure expects a qubit\n";
-      std::exit(1);
+      std::stringstream err;
+      err << "[Semantic Error] measure expects a qubit\n";
+      reportError(err.str());
     }
     return new PrimitiveType("bit");
   }
-  std::cerr << "[Semantic Error] measure expects a qubit\n";
-  std::exit(1);
+  std::stringstream err;
+  err << "[Semantic Error] measure expects a qubit\n";
+  reportError(err.str());
 }
 
 Type *
 SemanticAnalyser::analyseAssignmentExpr(const AssignmentExpression *expr) {
   auto sym = lookup(expr->name);
   if (!sym) {
-    std::cerr << "[Semantic Error] Undeclared variable: " << expr->name << "\n";
-    std::exit(1);
+    std::stringstream err;
+    err << "[Semantic Error] Undeclared variable: " << expr->name << "\n";
+    reportError(err.str());
   }
   if (sym->isFinal) {
-    std::cerr << "[Semantic Error] Cannot assign to final variable: "
-              << expr->name << "\n";
-    std::exit(1);
+    std::stringstream err;
+    err << "[Semantic Error] Cannot assign to final variable: " << expr->name
+        << "\n";
+    reportError(err.str());
   }
 
   Type *rhs = analyseExpression(expr->value.get());
   if (!isSameType(sym->type, rhs)) {
-    std::cerr << "[Type Error] Cannot assign value of type "
-              << typeToString(rhs) << " to variable of type "
-              << typeToString(sym->type) << "\n";
-    std::exit(1);
+    std::stringstream err;
+    err << "[Type Error] Cannot assign value of type " << typeToString(rhs)
+        << " to variable of type " << typeToString(sym->type) << "\n";
+    reportError(err.str());
   }
 
   return sym->type;
@@ -423,24 +445,21 @@ std::string SemanticAnalyser::typeToString(Type *t) {
 
 // Error handling
 void SemanticAnalyser::reportError(const std::string &msg) {
-  std::cerr << "[Quanta Semantic Error]\n" << msg << "\n";
-  std::exit(1);
+  std::stringstream err;
+  err << "[Semantic Error] " << msg;
+  throw std::runtime_error(err.str());
 }
 
 void SemanticAnalyser::reportError(const std::string &msg, const Token &token) {
-  std::cerr << "[Quanta Semantic Error]\n"
-            << "Line " << token.line << ", Col " << token.column
-            << ", Token = '" << token.value << "'\n"
-            << msg << "\n";
-  std::exit(1);
+  std::stringstream err;
+  err << "[Semantic Error] Line " << token.line << ", Col " << token.column
+      << ", Token = '" << token.value << "': " << msg;
+  throw std::runtime_error(err.str());
 }
 
 void SemanticAnalyser::reportError(const std::string &msg,
                                    const ASTNode *node) {
-  std::cerr << "[Quanta Semantic Error]\n";
-  if (node) {
-    std::cerr << "(no line info available)\n";
-  }
-  std::cerr << msg << "\n";
-  std::exit(1);
+  std::stringstream err;
+  err << "[Semantic Error] " << msg;
+  throw std::runtime_error(err.str());
 }

@@ -3,6 +3,8 @@
 #include <cctype>
 #include <cstdlib>
 #include <iostream>
+#include <sstream>
+#include <stdexcept>
 #include <unordered_map>
 
 Lexer::Lexer(const std::string &source)
@@ -63,10 +65,11 @@ void Lexer::skipComment() {
 }
 
 void Lexer::reportError(const std::string &msg) {
-  std::cerr << "[Quanta Lexer Error]"
-            << "\n"
-            << "Line " << line << ", Col " << column << ": " << msg << "\n";
-  std::exit(1);
+  std::stringstream err;
+  err << "[Quanta Lexer Error]"
+      << "\n"
+      << "Line " << line << ", Col " << column << ": " << msg << "\n";
+  throw std::runtime_error(err.str());
 }
 
 Token Lexer::makeToken(TokenType type, const std::string &value) {

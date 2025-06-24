@@ -1,0 +1,4 @@
+function main() -> int {
+    int a = x + 5; 
+    return a;
+}

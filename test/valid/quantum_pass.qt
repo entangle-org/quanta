@@ -1,5 +1,0 @@
-@quantum
-function bell(qubit q0, qubit q1) -> void {
-  h(q0);
-  cx(q0, q1);
-}

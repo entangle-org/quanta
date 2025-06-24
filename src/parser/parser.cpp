@@ -1,5 +1,7 @@
 #include "parser.hpp"
 #include <iostream>
+#include <sstream>
+#include <stdexcept>
 
 Parser::Parser(const std::vector<Token> &tokens) : tokens(tokens), current(0) {}
 
@@ -53,13 +55,14 @@ bool Parser::isAtEnd() const { return peek().type == TokenType::Eof; }
 
 // Error
 void Parser::reportError(const std::string &message) {
+  std::stringstream err;
   const Token &token = peek();
-  std::cerr << "[Quanta Parser Error]"
-            << "\n"
-            << "Line " << token.line << ", Col " << token.column
-            << ", Token = '" << token.value << "'\n"
-            << message << "\n";
-  std::exit(1);
+  err << "[Quanta Parser Error]"
+      << "\n"
+      << "Line " << token.line << ", Col " << token.column << ", Token = '"
+      << token.value << "'\n"
+      << message << "\n";
+  throw std::runtime_error(err.str());
 }
 
 // Main parse function

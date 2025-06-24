@@ -1,0 +1,5 @@
+function main() -> int {
+    final int value = 42;
+    value = 10;  
+    return value;
+}
