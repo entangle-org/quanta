@@ -34,9 +34,7 @@ comparison      ::= addition { ( ">" | "<" | ">=" | "<=" ) addition } ;
 addition        ::= multiplication { ( "+" | "-" ) multiplication } ;
 multiplication  ::= unary { ( "*" | "/" | "%" ) unary } ;
 
-unary           ::= "-" unary
-                 | "*" identifier "(" [ argumentList ] ")"   // constructor call
-                 | call ;
+unary           ::= "-" unary | "*" identifier "(" [ argumentList ] ")" | call ;
 
 call            ::= primary { "." identifier | "(" argumentList ")" } ;
 
