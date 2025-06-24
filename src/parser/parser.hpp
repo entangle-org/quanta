@@ -39,6 +39,8 @@ private:
 
   // Declarations
   std::unique_ptr<VariableDeclaration> parseVariableDeclaration(bool isFinal);
+  std::unique_ptr<VariableDeclaration>
+  parseVariableDeclaration(std::unique_ptr<Type> preParsedType, bool isFinal);
   std::unique_ptr<AnnotationNode> parseAnnotation();
   std::vector<std::unique_ptr<AnnotationNode>> parseAnnotations();
 

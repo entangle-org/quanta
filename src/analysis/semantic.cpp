@@ -52,8 +52,9 @@ Symbol *SemanticAnalyser::lookup(const std::string &name) {
 }
 
 void SemanticAnalyser::analyseProgram(const Program *program) {
-  for (const auto &cls : program->classes) {
-    analyseClass(cls.get());
+  for (const auto &clazz : program->classes) {
+    classMap[clazz->name] = clazz.get();
+    analyseClass(clazz.get());
   }
   for (const auto &func : program->functions) {
     analyseFunction(func.get());
@@ -68,6 +69,15 @@ void SemanticAnalyser::analyseClass(const ClassDeclaration *clazz) {
     analyseVariableDeclaration(member.get());
   }
   for (const auto &method : clazz->methods) {
+    if (method->isConstructor) {
+      if (method->name != clazz->name) {
+        reportError("Constructor must have the same name as the class: " +
+                    clazz->name);
+      }
+      if (dynamic_cast<VoidType *>(method->returnType.get()) == nullptr) {
+        reportError("Constructors must return void");
+      }
+    }
     analyseFunction(method.get());
   }
 }
@@ -95,6 +105,10 @@ void SemanticAnalyser::analyseFunction(const FunctionDeclaration *func) {
       reportError("@quantum functions must return void or bit");
     }
     inQuantumFunction = true;
+  }
+
+  if (func->isConstructor && !isVoidType(func->returnType.get())) {
+    reportError("Constructors must return void", func);
   }
 
   enterScope();
@@ -257,10 +271,16 @@ Type *SemanticAnalyser::analyseExpression(const Expression *expr) {
     return analyseVariable(var);
   } else if (auto call = dynamic_cast<const CallExpression *>(expr)) {
     return analyseCall(call);
+  } else if (auto memberAccess =
+                 dynamic_cast<const MemberAccessExpression *>(expr)) {
+    return analyseMemberAccess(memberAccess);
   } else if (auto meas = dynamic_cast<const MeasureExpression *>(expr)) {
     return analyseMeasure(meas);
   } else if (auto assign = dynamic_cast<const AssignmentExpression *>(expr)) {
     return analyseAssignmentExpr(assign);
+  } else if (auto constructor =
+                 dynamic_cast<const ConstructorCallExpression *>(expr)) {
+    return analyseConstructorCallExpr(constructor);
   } else if (auto paren = dynamic_cast<const ParenthesizedExpression *>(expr)) {
     return analyseExpression(paren->expression.get());
   }
@@ -344,23 +364,70 @@ Type *SemanticAnalyser::analyseVariable(const VariableExpression *expr) {
 }
 
 Type *SemanticAnalyser::analyseCall(const CallExpression *expr) {
-  auto sym = lookup(expr->callee);
-  if (!sym || sym->kind != SymbolKind::Function) {
-    std::stringstream err;
-    err << "[Semantic Error] '" << expr->callee << "' is not a function\n";
-    reportError(err.str());
+  // Case 1: calling a method on an instance, like `instance.getX()`
+  if (auto member =
+          dynamic_cast<MemberAccessExpression *>(expr->callee.get())) {
+    Type *calleeType = analyseMemberAccess(member);
+
+    // Check arguments
+    for (const auto &arg : expr->arguments) {
+      analyseExpression(arg.get());
+    }
+
+    return calleeType;
   }
 
-  const auto &funcType = sym->type;
-  // TODO: match arguments vs func declaration from AST (symbol table doesn't
-  // yet store parameters)
+  // Case 2: calling a global function
+  auto var = dynamic_cast<VariableExpression *>(expr->callee.get());
+  if (!var) {
+    reportError("Invalid function call target");
+  }
 
-  // For now, just check all args are valid expressions
+  auto sym = lookup(var->name);
+  if (!sym || sym->kind != SymbolKind::Function) {
+    reportError("'" + var->name + "' is not a function");
+  }
+
   for (const auto &arg : expr->arguments) {
     analyseExpression(arg.get());
   }
 
-  return funcType;
+  return sym->type;
+}
+
+Type *
+SemanticAnalyser::analyseMemberAccess(const MemberAccessExpression *expr) {
+  Type *objectType = analyseExpression(expr->object.get());
+
+  auto *obj = dynamic_cast<ObjectType *>(objectType);
+  if (!obj) {
+    reportError("Cannot access member '" + expr->member +
+                "' on non-object type: " + typeToString(objectType));
+  }
+
+  auto it = classMap.find(obj->className);
+  if (it == classMap.end()) {
+    reportError("Unknown class: " + obj->className);
+  }
+
+  const ClassDeclaration *clazz = it->second;
+
+  // Try to find a matching member variable
+  for (const auto &member : clazz->members) {
+    if (member->name == expr->member) {
+      return member->varType.get();
+    }
+  }
+
+  // Try to find a matching method
+  for (const auto &method : clazz->methods) {
+    if (method->name == expr->member) {
+      return method->returnType.get();
+    }
+  }
+
+  reportError("Class '" + obj->className + "' has no member named '" +
+              expr->member + "'");
 }
 
 Type *SemanticAnalyser::analyseMeasure(const MeasureExpression *expr) {
@@ -404,6 +471,29 @@ SemanticAnalyser::analyseAssignmentExpr(const AssignmentExpression *expr) {
   return sym->type;
 }
 
+Type *SemanticAnalyser::analyseConstructorCallExpr(
+    const ConstructorCallExpression *expr) {
+  auto it = classMap.find(expr->className);
+  if (it == classMap.end()) {
+    reportError("Unknown class: " + expr->className);
+  }
+
+  const ClassDeclaration *clazz = it->second;
+  bool found = false;
+  for (const auto &method : clazz->methods) {
+    if (method->isConstructor && method->name == expr->className) {
+      found = true;
+      break;
+    }
+  }
+
+  if (!found) {
+    reportError("Constructor not found for class: " + expr->className);
+  }
+
+  return new ObjectType(expr->className);
+}
+
 // Type helpers
 
 Type *SemanticAnalyser::evaluateType(const std::unique_ptr<Type> &t) {
@@ -429,8 +519,11 @@ bool SemanticAnalyser::isBitType(Type *t) {
 }
 
 bool SemanticAnalyser::isVoidType(Type *t) {
-  auto *pt = dynamic_cast<PrimitiveType *>(t);
-  return pt && pt->name == "void";
+  if (dynamic_cast<VoidType *>(t))
+    return true;
+  if (auto *pt = dynamic_cast<PrimitiveType *>(t))
+    return pt->name == "void";
+  return false;
 }
 
 std::string SemanticAnalyser::typeToString(Type *t) {

@@ -121,18 +121,30 @@ std::unique_ptr<FunctionDeclaration> Parser::parseFunction() {
 
   expect(TokenType::Function, "Expected 'function' keyword");
 
-  // Parse function name
-  if (!check(TokenType::Identifier)) {
-    reportError("Expected function name after 'function' keyword");
+  // Constructor detection
+  if (match(TokenType::Star)) {
+    func->isConstructor = true;
+
+    if (!check(TokenType::Identifier)) {
+      reportError("Expected constructor name after '*'");
+    }
+
+    func->name = advance().value;
+  } else {
+    func->isConstructor = false;
+
+    if (!check(TokenType::Identifier)) {
+      reportError("Expected function name after 'function' keyword");
+    }
+    func->name = advance().value;
   }
-  func->name = advance().value;
 
   // Parse parameters
   expect(TokenType::LParen, "Expected '(' after function name");
   while (!check(TokenType::RParen)) {
     auto param = std::make_unique<Parameter>();
 
-    param->type = parseType(); // <- use full type parser
+    param->type = parseType();
 
     if (!check(TokenType::Identifier)) {
       reportError("Expected parameter name");
@@ -170,62 +182,71 @@ std::unique_ptr<ClassDeclaration> Parser::parseClass() {
   expect(TokenType::LBrace, "Expected '{' to start class body");
 
   while (!check(TokenType::RBrace) && !isAtEnd()) {
-    // Handle @members("public") or @members("private")
+    // @members("public") or @members("private"):
     if (check(TokenType::At) && checkNext(TokenType::Members)) {
       advance();
       advance();
-      expect(TokenType::LParen, "Expected '(' after @members");
 
+      expect(TokenType::LParen, "Expected '(' after @members");
       if (!check(TokenType::StringLiteral)) {
         reportError("Expected access modifier string in @members");
       }
+
       std::string accessModifier = advance().value;
       if (accessModifier != "\"public\"" && accessModifier != "\"private\"") {
-        reportError(
-            "Invalid access modifier: must be \"public\" or \"private\"");
+        reportError("Access modifier must be \"public\" or \"private\"");
       }
       accessModifier = accessModifier.substr(1, accessModifier.length() - 2);
 
       expect(TokenType::RParen, "Expected ')' after access modifier");
+      expect(TokenType::Colon, "Expected ':' after @members(...)");
 
-      // Parse variable declarations inside the block
       while (!check(TokenType::At) && !check(TokenType::RBrace)) {
         bool isFinal = match(TokenType::Final);
         auto member = parseVariableDeclaration(isFinal);
-
-        // Annotate with access level
         member->access = accessModifier;
         clazz->members.push_back(std::move(member));
       }
 
+      // @methods:
     } else if (check(TokenType::At) && checkNext(TokenType::Methods)) {
       advance();
       advance();
-      // Everything after this point must be functions
-      while (!check(TokenType::RBrace) && !isAtEnd()) {
+
+      expect(TokenType::Colon, "Expected ':' after @methods");
+
+      while (!check(TokenType::At) && !check(TokenType::RBrace)) {
         clazz->methods.push_back(parseFunction());
       }
+
     } else {
-      reportError("Only @members or @methods are allowed inside class body");
+      reportError(
+          "Only @members(...) or @methods are allowed inside class body");
     }
   }
 
   expect(TokenType::RBrace, "Expected '}' to end class body");
-
   return clazz;
 }
 
 std::unique_ptr<Statement> Parser::parseTopLevelStatement() {
   bool isFinal = match(TokenType::Final);
 
+  // Lookahead for user-defined type declarations: Identifier Identifier
+  if (check(TokenType::Identifier) && checkNext(TokenType::Identifier)) {
+    auto type = parseType(); // consumes the type name (first identifier)
+    return parseVariableDeclaration(std::move(type), isFinal);
+  }
+
+  // Match primitive declarations or annotated declarations
   if (check(TokenType::At) || check(TokenType::Int) ||
-      check(TokenType::Float) || check(TokenType::String) ||
-      check(TokenType::Char) || check(TokenType::Bit) ||
+      check(TokenType::Float) || check(TokenType::Char) ||
+      check(TokenType::String) || check(TokenType::Bit) ||
       check(TokenType::Qubit)) {
     return parseVariableDeclaration(isFinal);
   }
 
-  // Fallback to expression statement
+  // Fallback: expression statement
   auto exprStmt = std::make_unique<ExpressionStatement>();
   exprStmt->expression = parseExpression();
   expect(TokenType::Semicolon, "Expected ';' after expression");
@@ -235,14 +256,27 @@ std::unique_ptr<Statement> Parser::parseTopLevelStatement() {
 // Declarations
 std::unique_ptr<VariableDeclaration>
 Parser::parseVariableDeclaration(bool isFinal) {
+  return parseVariableDeclaration(nullptr, isFinal);
+}
+
+std::unique_ptr<VariableDeclaration>
+Parser::parseVariableDeclaration(std::unique_ptr<Type> preParsedType,
+                                 bool isFinal) {
   auto var = std::make_unique<VariableDeclaration>();
   var->isFinal = isFinal;
 
   // Annotations
   var->annotations = parseAnnotations();
 
-  // Type
-  var->varType = parseType();
+  if (preParsedType) {
+    var->varType = std::move(preParsedType);
+  } else {
+    var->varType = parseType();
+  }
+
+  if (!check(TokenType::Identifier)) {
+    reportError("Expected variable name");
+  }
 
   // Name
   if (!check(TokenType::Identifier)) {
@@ -296,16 +330,25 @@ std::vector<std::unique_ptr<AnnotationNode>> Parser::parseAnnotations() {
 }
 
 // Statements
+
 std::unique_ptr<Statement> Parser::parseStatement() {
   bool isFinal = match(TokenType::Final);
 
-  // Variable declarations inside blocks
-  if (check(TokenType::Int) || check(TokenType::Float) ||
-      check(TokenType::String) || check(TokenType::Char) ||
-      check(TokenType::Bit) || check(TokenType::Qubit)) {
+  // Lookahead for user-defined type declarations: Identifier Identifier
+  if (check(TokenType::Identifier) && checkNext(TokenType::Identifier)) {
+    auto type = parseType(); // consumes the type name (first identifier)
+    return parseVariableDeclaration(std::move(type), isFinal);
+  }
+
+  // Match primitive declarations or annotated declarations
+  if (check(TokenType::At) || check(TokenType::Int) ||
+      check(TokenType::Float) || check(TokenType::Char) ||
+      check(TokenType::String) || check(TokenType::Bit) ||
+      check(TokenType::Qubit)) {
     return parseVariableDeclaration(isFinal);
   }
 
+  // Standard statements
   if (match(TokenType::Return))
     return parseReturn();
   if (match(TokenType::If))
@@ -318,8 +361,10 @@ std::unique_ptr<Statement> Parser::parseStatement() {
     return parseReset();
   if (match(TokenType::Measure))
     return parseMeasure();
+
   if (check(TokenType::Identifier) && checkNext(TokenType::Equals))
     return parseAssignment();
+
   return parseExpressionStatement();
 }
 
@@ -526,6 +571,17 @@ std::unique_ptr<Expression> Parser::parseMultiplicative() {
 }
 
 std::unique_ptr<Expression> Parser::parseUnary() {
+  if (match(TokenType::Star)) {
+    Token className =
+        expect(TokenType::Identifier, "Expected class name after '*'");
+    expect(TokenType::LParen, "Expected '(' after class name");
+    auto args = parseArgumentList();
+    expect(TokenType::RParen, "Expected ')' after arguments");
+
+    return std::make_unique<ConstructorCallExpression>(className.value,
+                                                       std::move(args));
+  }
+
   if (match(TokenType::Minus)) {
     std::string op = previous().value;
     auto right = parseUnary();
@@ -539,13 +595,23 @@ std::unique_ptr<Expression> Parser::parseUnary() {
 std::unique_ptr<Expression> Parser::parseCall() {
   auto expr = parsePrimary();
 
-  while (match(TokenType::LParen)) {
-    auto args = parseArgumentList();
-    auto *varExpr = dynamic_cast<VariableExpression *>(expr.get());
-    if (!varExpr) {
-      reportError("Only variables can be used as function names in calls");
+  while (true) {
+    if (match(TokenType::Dot)) {
+      expect(TokenType::Identifier, "Expected member name after '.'");
+      std::string member = previous().value;
+      expr = std::make_unique<MemberAccessExpression>(std::move(expr), member);
+    } else if (match(TokenType::LParen)) {
+      std::vector<std::unique_ptr<Expression>> args;
+      if (!check(TokenType::RParen)) {
+        do {
+          args.push_back(parseExpression());
+        } while (match(TokenType::Comma));
+      }
+      expect(TokenType::RParen, "Expected ')' after arguments");
+      expr = std::make_unique<CallExpression>(std::move(expr), std::move(args));
+    } else {
+      break;
     }
-    expr = std::make_unique<CallExpression>(varExpr->name, std::move(args));
   }
 
   return expr;
@@ -602,39 +668,59 @@ std::unique_ptr<Expression> Parser::parseLiteral() {
 // Types
 
 std::unique_ptr<Type> Parser::parseType() {
-  auto baseType = parsePrimitiveType();
+  // First: handle primitives and logical<>
+  if (check(TokenType::Void) || check(TokenType::Logical) ||
+      check(TokenType::Int) || check(TokenType::Float) ||
+      check(TokenType::Char) || check(TokenType::String) ||
+      check(TokenType::Bit) || check(TokenType::Qubit)) {
 
-  if (match(TokenType::LBracket)) {
-    expect(TokenType::RBracket, "Expected ']' after '[' in array type");
-    return parseArrayType(std::move(baseType));
+    auto baseType = parsePrimitiveType();
+
+    // Array types are only allowed for primitive types
+    if (match(TokenType::LBracket)) {
+      expect(TokenType::RBracket, "Expected ']' after '[' in array type");
+      return parseArrayType(std::move(baseType));
+    }
+
+    return baseType;
   }
 
-  return baseType;
+  // Handle ObjectType (class types)
+  if (check(TokenType::Identifier)) {
+    std::string typeName = advance().value;
+    return std::make_unique<ObjectType>(typeName);
+  }
+
+  reportError("Expected type");
+  return nullptr;
 }
 
 std::unique_ptr<Type> Parser::parsePrimitiveType() {
-  const Token &token = advance();
-
-  if (token.type == TokenType::Identifier) {
-    return std::make_unique<PrimitiveType>(PrimitiveType{token.value});
-  }
-
-  switch (token.type) {
-  case TokenType::Int:
-  case TokenType::Float:
-  case TokenType::String:
-  case TokenType::Char:
-  case TokenType::Qubit:
-  case TokenType::Bit:
-    return std::make_unique<PrimitiveType>(PrimitiveType{token.value});
-  case TokenType::Logical:
-    return std::make_unique<LogicalType>(LogicalType{token.value});
-  case TokenType::Void:
+  if (check(TokenType::Void)) {
+    advance();
     return std::make_unique<VoidType>();
-  default:
-    reportError("Expected a valid type.");
-    return nullptr;
   }
+
+  if (check(TokenType::Logical)) {
+    advance();
+    expect(TokenType::Less, "Expected '<' after 'logical'");
+    if (!check(TokenType::Identifier)) {
+      reportError("Expected code identifier inside logical<>");
+    }
+    std::string code = advance().value;
+    expect(TokenType::Greater, "Expected '>' after code identifier");
+    return std::make_unique<LogicalType>(code);
+  }
+
+  if (check(TokenType::Int) || check(TokenType::Float) ||
+      check(TokenType::Char) || check(TokenType::String) ||
+      check(TokenType::Bit) || check(TokenType::Qubit)) {
+    std::string typeName = advance().value;
+    return std::make_unique<PrimitiveType>(typeName);
+  }
+
+  reportError("Expected primitive type");
+  return nullptr;
 }
 
 std::unique_ptr<Type>
@@ -671,7 +757,6 @@ std::vector<std::unique_ptr<Expression>> Parser::parseArgumentList() {
   std::vector<std::unique_ptr<Expression>> args;
 
   if (check(TokenType::RParen)) {
-    advance();
     return args;
   }
 

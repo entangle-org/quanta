@@ -2,11 +2,19 @@
 program         ::= { importDecl | functionDecl | classDecl | statement }
 
 importDecl      ::= "import" identifier ";" ;
-functionDecl    ::= { annotation } "function" identifier "(" [ parameterList ] ")" "->" type block ;
-classDecl       ::= "class" identifier "{" { functionDecl } "}" ;
+
+functionDecl    ::= { annotation } "function" [ "*" ] identifier "(" [ parameterList ] ")" "->" type block ;
+
+classDecl       ::= "class" identifier "{" { classSection } "}" ;
+classSection    ::= membersSection | methodsSection ;
+
+membersSection  ::= "@" "members" "(" ( "\"public\"" | "\"private\"" ) ")" ":" { [ "final" ] varDecl } ;
+methodsSection  ::= "@" "methods" ":" { functionDecl } ;
+
 statement       ::= varDecl | exprStmt | returnStmt | ifStmt | forStmt | echoStmt | resetStmt | measureStmt ;
 
-varDecl         ::= [ "final" ] [ annotation ] type identifier [ "=" expression ] ";" ;
+varDecl         ::= [ "final" ] { annotation } type identifier [ "=" expression ] ";" ;
+
 returnStmt      ::= "return" [ expression ] ";" ;
 ifStmt          ::= "if" "(" expression ")" block ;
 forStmt         ::= "for" "(" ( varDecl | exprStmt | ";" ) expression ";" expression ")" block ;
@@ -16,6 +24,7 @@ measureStmt     ::= "measure" expression ";" ;
 exprStmt        ::= expression ";" ;
 
 annotation      ::= "@" ( "quantum" | "adjoint" | "state" "(" ( char | string ) ")" ) ;
+
 parameterList   ::= parameter { "," parameter } ;
 parameter       ::= type identifier ;
 
@@ -24,11 +33,21 @@ assignment      ::= comparison [ "=" assignment ] ;
 comparison      ::= addition { ( ">" | "<" | ">=" | "<=" ) addition } ;
 addition        ::= multiplication { ( "+" | "-" ) multiplication } ;
 multiplication  ::= unary { ( "*" | "/" | "%" ) unary } ;
-unary           ::= "-" unary | call ;
-call            ::= primary { "(" argumentList ")" } ;
+
+unary           ::= "-" unary
+                 | "*" identifier "(" [ argumentList ] ")"   // constructor call
+                 | call ;
+
+call            ::= primary { "." identifier | "(" argumentList ")" } ;
+
 primary         ::= literal | identifier | "measure" expression | "(" expression ")" ;
+
 argumentList    ::= [ expression { "," expression } ] ;
+
 literal         ::= integer | float | char | string ;
 
-type            ::= primitiveType [ "[]" ] ;
+type            ::= primitiveType [ "[]" ] | objectType ;
 primitiveType   ::= "int" | "float" | "string" | "char" | "bit" | "qubit" | "void" ;
+objectType      ::= identifier ;
+
+block           ::= "{" { statement } "}" ;

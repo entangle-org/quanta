@@ -1,0 +1,11 @@
+class Bad {
+  @methods
+    function add() -> int {
+      return 1;
+    }
+}
+
+function main() -> int {
+  int y = Bad.add();  
+  return y;
+}

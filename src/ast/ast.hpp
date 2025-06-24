@@ -142,12 +142,12 @@ struct VariableExpression : public Expression {
 
 // Call Expression
 struct CallExpression : public Expression {
-  std::string callee;
+  std::unique_ptr<Expression> callee;
   std::vector<std::unique_ptr<Expression>> arguments;
 
-  CallExpression(const std::string &callee,
+  CallExpression(std::unique_ptr<Expression> callee,
                  std::vector<std::unique_ptr<Expression>> args)
-      : callee(callee), arguments(std::move(args)) {}
+      : callee(std::move(callee)), arguments(std::move(args)) {}
 };
 
 // Index Expression
@@ -183,6 +183,26 @@ struct AssignmentExpression : public Expression {
       : name(std::move(name)), value(std::move(value)) {}
 };
 
+// Constructor Call Expression
+struct ConstructorCallExpression : public Expression {
+  std::string className;
+  std::vector<std::unique_ptr<Expression>> arguments;
+
+  ConstructorCallExpression(const std::string &className,
+                            std::vector<std::unique_ptr<Expression>> args)
+      : className(className), arguments(std::move(args)) {}
+};
+
+// Class Method Access Expression
+struct MemberAccessExpression : public Expression {
+  std::unique_ptr<Expression> object;
+  std::string member;
+
+  MemberAccessExpression(std::unique_ptr<Expression> obj,
+                         const std::string &mem)
+      : object(std::move(obj)), member(mem) {}
+};
+
 // Type Nodes
 struct PrimitiveType : public Type {
   std::string name;
@@ -205,6 +225,12 @@ struct ArrayType : public Type {
 
 struct VoidType : public Type {
   VoidType() = default;
+};
+
+struct ObjectType : public Type {
+  std::string className;
+
+  ObjectType(const std::string &className) : className(className) {}
 };
 
 // Parameter
@@ -233,6 +259,7 @@ struct FunctionDeclaration : public ASTNode {
   std::unique_ptr<BlockStatement> body;
   std::vector<std::unique_ptr<AnnotationNode>> annotations;
   bool hasQuantumAnnotation;
+  bool isConstructor = false;
 
   FunctionDeclaration() = default;
 };

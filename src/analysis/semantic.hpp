@@ -38,6 +38,7 @@ public:
 
 private:
   std::shared_ptr<Scope> currentScope;
+  std::unordered_map<std::string, const ClassDeclaration *> classMap;
   bool inQuantumFunction = false;
 
   // Scope helpers
@@ -70,8 +71,10 @@ private:
   Type *analyseLiteral(const LiteralExpression *expr);
   Type *analyseVariable(const VariableExpression *expr);
   Type *analyseCall(const CallExpression *expr);
+  Type *analyseMemberAccess(const MemberAccessExpression *expr);
   Type *analyseMeasure(const MeasureExpression *expr);
   Type *analyseAssignmentExpr(const AssignmentExpression *expr);
+  Type *analyseConstructorCallExpr(const ConstructorCallExpression *expr);
 
   // Type utils
   Type *evaluateType(const std::unique_ptr<Type> &t);

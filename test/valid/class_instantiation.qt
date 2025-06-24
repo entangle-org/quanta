@@ -1,0 +1,19 @@
+class MyClass {
+  @members("public"):
+    int x = 10;
+
+  @methods:
+    function *MyClass() -> void {
+      x = 42;
+    }
+
+    function getX() -> int {
+      return x;
+    }
+}
+
+function main() -> int {
+  MyClass instance = *MyClass();
+  int y = instance.getX();
+  return y;
+}
