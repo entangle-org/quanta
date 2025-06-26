@@ -4,14 +4,15 @@
 #include <string>
 #include <vector>
 
-struct CodegenVisitor;
+namespace quanta {
+class BaseCodegenVisitor;
+} // namespace quanta
 
-#define ACCEPT_VISITOR void accept(CodegenVisitor &visitor) override;
+#define ACCEPT_VISITOR virtual void accept(CodegenVisitor &visitor) override;
 
 // Base Node Interfaces
 struct ASTNode {
   virtual ~ASTNode() = default;
-  virtual void accept(CodegenVisitor &visitor) = 0;
 };
 
 struct Statement : public ASTNode {};

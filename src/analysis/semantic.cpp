@@ -285,6 +285,7 @@ Type *SemanticAnalyser::analyseExpression(const Expression *expr) {
     return analyseExpression(paren->expression.get());
   }
   reportError("Unknown expression type");
+  return nullptr;
 }
 
 Type *SemanticAnalyser::analyseBinary(const BinaryExpression *expr) {
@@ -318,6 +319,8 @@ Type *SemanticAnalyser::analyseBinary(const BinaryExpression *expr) {
   std::stringstream err;
   err << "[Semantic Error] Unsupported binary operator: " << expr->op << "\n";
   reportError(err.str());
+
+  return nullptr;
 }
 
 Type *SemanticAnalyser::analyseUnary(const UnaryExpression *expr) {
@@ -336,6 +339,8 @@ Type *SemanticAnalyser::analyseUnary(const UnaryExpression *expr) {
   std::stringstream err;
   err << "[Semantic Error] Unsupported unary operator: " << expr->op << "\n";
   reportError(err.str());
+
+  return nullptr;
 }
 
 Type *SemanticAnalyser::analyseLiteral(const LiteralExpression *expr) {
@@ -428,6 +433,8 @@ SemanticAnalyser::analyseMemberAccess(const MemberAccessExpression *expr) {
 
   reportError("Class '" + obj->className + "' has no member named '" +
               expr->member + "'");
+
+  return nullptr;
 }
 
 Type *SemanticAnalyser::analyseMeasure(const MeasureExpression *expr) {
@@ -443,6 +450,8 @@ Type *SemanticAnalyser::analyseMeasure(const MeasureExpression *expr) {
   std::stringstream err;
   err << "[Semantic Error] measure expects a qubit\n";
   reportError(err.str());
+
+  return nullptr;
 }
 
 Type *
