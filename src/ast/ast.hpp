@@ -4,9 +4,14 @@
 #include <string>
 #include <vector>
 
+struct CodegenVisitor;
+
+#define ACCEPT_VISITOR void accept(CodegenVisitor &visitor) override;
+
 // Base Node Interfaces
 struct ASTNode {
   virtual ~ASTNode() = default;
+  virtual void accept(CodegenVisitor &visitor) = 0;
 };
 
 struct Statement : public ASTNode {};
@@ -23,6 +28,8 @@ struct ImportStatement : public Statement {
   std::string module;
 
   ImportStatement() = default;
+
+  ACCEPT_VISITOR
 };
 
 // Variable Declaration
@@ -35,6 +42,8 @@ struct VariableDeclaration : public Statement {
   bool isFinal;
 
   VariableDeclaration() = default;
+
+  ACCEPT_VISITOR
 };
 
 // Block Statement
@@ -42,6 +51,8 @@ struct BlockStatement : public Statement {
   std::vector<std::unique_ptr<Statement>> statements;
 
   BlockStatement() = default;
+
+  ACCEPT_VISITOR
 };
 
 // Expression Statement
@@ -49,6 +60,7 @@ struct ExpressionStatement : public Statement {
   std::unique_ptr<Expression> expression;
 
   ExpressionStatement() = default;
+  ACCEPT_VISITOR
 };
 
 // Return Statement
@@ -56,6 +68,8 @@ struct ReturnStatement : public Statement {
   std::unique_ptr<Expression> value;
 
   ReturnStatement() = default;
+
+  ACCEPT_VISITOR
 };
 
 // If Statement
@@ -65,6 +79,8 @@ struct IfStatement : public Statement {
   std::unique_ptr<Statement> elseBranch;
 
   IfStatement() = default;
+
+  ACCEPT_VISITOR
 };
 
 // For Statement
@@ -75,6 +91,8 @@ struct ForStatement : public Statement {
   std::unique_ptr<Statement> body;
 
   ForStatement() = default;
+
+  ACCEPT_VISITOR
 };
 
 // Echo Statement
@@ -82,6 +100,8 @@ struct EchoStatement : public Statement {
   std::unique_ptr<Expression> value;
 
   EchoStatement() = default;
+
+  ACCEPT_VISITOR
 };
 
 // Reset Statement
@@ -89,6 +109,8 @@ struct ResetStatement : public Statement {
   std::unique_ptr<Expression> target;
 
   ResetStatement() = default;
+
+  ACCEPT_VISITOR
 };
 
 // Measure Statement
@@ -96,6 +118,8 @@ struct MeasureStatement : public Statement {
   std::unique_ptr<Expression> qubit;
 
   MeasureStatement() = default;
+
+  ACCEPT_VISITOR
 };
 
 // Assignment
@@ -104,6 +128,8 @@ struct AssignmentStatement : public Statement {
   std::unique_ptr<Expression> value;
 
   AssignmentStatement() = default;
+
+  ACCEPT_VISITOR
 };
 
 // Binary Expression
@@ -115,6 +141,8 @@ struct BinaryExpression : public Expression {
   BinaryExpression(const std::string &op, std::unique_ptr<Expression> left,
                    std::unique_ptr<Expression> right)
       : op(op), left(std::move(left)), right(std::move(right)) {}
+
+  ACCEPT_VISITOR
 };
 
 // Unary Expression
@@ -124,20 +152,26 @@ struct UnaryExpression : public Expression {
 
   UnaryExpression(const std::string &op, std::unique_ptr<Expression> right)
       : op(op), right(std::move(right)) {}
+
+  ACCEPT_VISITOR
 };
 
 // Literal Expression
 struct LiteralExpression : public Expression {
   std::string value;
 
-  explicit LiteralExpression(const std::string &value) : value(value) {}
+  LiteralExpression(const std::string &value) : value(value) {}
+
+  ACCEPT_VISITOR
 };
 
 // Variable Expression
 struct VariableExpression : public Expression {
   std::string name;
 
-  explicit VariableExpression(const std::string &name) : name(name) {}
+  VariableExpression(const std::string &name) : name(name) {}
+
+  ACCEPT_VISITOR
 };
 
 // Call Expression
@@ -148,6 +182,8 @@ struct CallExpression : public Expression {
   CallExpression(std::unique_ptr<Expression> callee,
                  std::vector<std::unique_ptr<Expression>> args)
       : callee(std::move(callee)), arguments(std::move(args)) {}
+
+  ACCEPT_VISITOR
 };
 
 // Index Expression
@@ -156,14 +192,18 @@ struct IndexExpression : public Expression {
   std::unique_ptr<Expression> index;
 
   IndexExpression() = default;
+
+  ACCEPT_VISITOR
 };
 
 // Parenthesized Expression
 struct ParenthesizedExpression : public Expression {
   std::unique_ptr<Expression> expression;
 
-  explicit ParenthesizedExpression(std::unique_ptr<Expression> expr)
+  ParenthesizedExpression(std::unique_ptr<Expression> expr)
       : expression(std::move(expr)) {}
+
+  ACCEPT_VISITOR
 };
 
 // Measure Expression
@@ -172,6 +212,8 @@ struct MeasureExpression : public Expression {
 
   MeasureExpression(std::unique_ptr<Expression> qubit)
       : qubit(std::move(qubit)) {}
+
+  ACCEPT_VISITOR
 };
 
 // Assignment Expression
@@ -181,6 +223,8 @@ struct AssignmentExpression : public Expression {
 
   AssignmentExpression(std::string name, std::unique_ptr<Expression> value)
       : name(std::move(name)), value(std::move(value)) {}
+
+  ACCEPT_VISITOR
 };
 
 // Constructor Call Expression
@@ -191,6 +235,8 @@ struct ConstructorCallExpression : public Expression {
   ConstructorCallExpression(const std::string &className,
                             std::vector<std::unique_ptr<Expression>> args)
       : className(className), arguments(std::move(args)) {}
+
+  ACCEPT_VISITOR
 };
 
 // Class Method Access Expression
@@ -201,6 +247,8 @@ struct MemberAccessExpression : public Expression {
   MemberAccessExpression(std::unique_ptr<Expression> obj,
                          const std::string &mem)
       : object(std::move(obj)), member(mem) {}
+
+  ACCEPT_VISITOR
 };
 
 // Type Nodes
@@ -208,12 +256,16 @@ struct PrimitiveType : public Type {
   std::string name;
 
   PrimitiveType(const std::string &name) : name(name) {}
+
+  ACCEPT_VISITOR
 };
 
 struct LogicalType : public Type {
   std::string code;
 
   LogicalType(const std::string &code) : code(code) {}
+
+  ACCEPT_VISITOR
 };
 
 struct ArrayType : public Type {
@@ -221,16 +273,22 @@ struct ArrayType : public Type {
 
   ArrayType(std::unique_ptr<Type> elementType)
       : elementType(std::move(elementType)) {}
+
+  ACCEPT_VISITOR
 };
 
 struct VoidType : public Type {
   VoidType() = default;
+
+  ACCEPT_VISITOR
 };
 
 struct ObjectType : public Type {
   std::string className;
 
   ObjectType(const std::string &className) : className(className) {}
+
+  ACCEPT_VISITOR
 };
 
 // Parameter
@@ -239,6 +297,8 @@ struct Parameter : public ASTNode {
   std::unique_ptr<Type> type;
 
   Parameter() = default;
+
+  ACCEPT_VISITOR
 };
 
 // Annotation
@@ -249,6 +309,8 @@ struct AnnotationNode : public ASTNode {
   AnnotationNode() = default;
   AnnotationNode(const std::string &name, const std::string &value)
       : name(name), value(value) {}
+
+  ACCEPT_VISITOR
 };
 
 // Function Declaration
@@ -262,6 +324,8 @@ struct FunctionDeclaration : public ASTNode {
   bool isConstructor = false;
 
   FunctionDeclaration() = default;
+
+  ACCEPT_VISITOR
 };
 
 // Class Declaration
@@ -271,6 +335,8 @@ struct ClassDeclaration : public ASTNode {
   std::vector<std::unique_ptr<FunctionDeclaration>> methods;
 
   ClassDeclaration() = default;
+
+  ACCEPT_VISITOR
 };
 
 // Program
@@ -281,4 +347,6 @@ struct Program : public ASTNode {
   std::vector<std::unique_ptr<Statement>> statements;
 
   Program() = default;
+
+  ACCEPT_VISITOR
 };
